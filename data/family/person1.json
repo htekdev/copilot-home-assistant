@@ -1,0 +1,27 @@
+{
+  "name": "{YourName}",
+  "telegram_user_id": "YOUR_TELEGRAM_USER_ID",
+  "role": "parent",
+  "email": "",
+  "phone": "",
+  "dietary": {
+    "allergies": [],
+    "preferences": [],
+    "dislikes": []
+  },
+  "medical": {
+    "doctor": "",
+    "pharmacy": "",
+    "medications": [],
+    "conditions": []
+  },
+  "schedule": {
+    "work_hours": "9-5 M-F"
+  },
+  "preferences": {
+    "wake_time": "06:00",
+    "bedtime": "22:00",
+    "notification_quiet_hours": "22:00-06:00"
+  },
+  "pets": []
+}

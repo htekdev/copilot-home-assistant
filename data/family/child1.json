@@ -1,0 +1,22 @@
+{
+  "name": "{ChildName}",
+  "role": "child",
+  "age": 0,
+  "dietary": {
+    "allergies": [],
+    "preferences": [],
+    "dislikes": []
+  },
+  "medical": {
+    "pediatrician": "",
+    "dentist": "",
+    "medications": [],
+    "conditions": []
+  },
+  "school": {
+    "name": "",
+    "teacher": "",
+    "schedule": ""
+  },
+  "activities": []
+}

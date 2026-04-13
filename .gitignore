@@ -1,0 +1,11 @@
+node_modules/
+.env
+data/google-tokens.json
+data/action-tracker.db
+data/budget/budget.db
+data/shopping-lists/shopping.db
+*.db-journal
+*.db-wal
+*.db-shm
+.playwright-mcp/
+recording-aids/

@@ -1,0 +1,17 @@
+{
+  "name": "Example Recipe",
+  "ingredients": [
+    "2 chicken breasts",
+    "1 tbsp olive oil",
+    "Salt and pepper to taste"
+  ],
+  "instructions": [
+    "Season chicken with salt and pepper",
+    "Heat oil in a skillet over medium-high heat",
+    "Cook chicken 6-7 minutes per side until golden"
+  ],
+  "servings": 4,
+  "prep_time": "5 min",
+  "cook_time": "15 min",
+  "tags": ["quick", "healthy", "kid-friendly"]
+}

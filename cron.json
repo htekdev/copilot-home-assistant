@@ -1,0 +1,96 @@
+{
+  "timezone": "America/Chicago",
+  "jobs": [
+    {
+      "id": "morning-briefing",
+      "schedule": "0 5 * * 1-5",
+      "enabled": true,
+      "agent": "daily-briefing"
+    },
+    {
+      "id": "weekend-briefing",
+      "schedule": "0 7 * * 0,6",
+      "enabled": true,
+      "agent": "daily-briefing"
+    },
+    {
+      "id": "heartbeat",
+      "schedule": "*/30 5-22 * * *",
+      "enabled": true,
+      "agent": "checkin"
+    },
+    {
+      "id": "weekly-planner",
+      "schedule": "0 19 * * 0",
+      "enabled": true,
+      "agent": "weekly-planner"
+    },
+    {
+      "id": "meal-planner",
+      "schedule": "0 10 * * 6",
+      "enabled": true,
+      "agent": "meal-planner"
+    },
+    {
+      "id": "budget-review",
+      "schedule": "0 9 1 * *",
+      "enabled": true,
+      "agent": "budget-review"
+    },
+    {
+      "id": "nightly-reflection",
+      "schedule": "0 21 * * *",
+      "enabled": true,
+      "agent": "platform-manager"
+    },
+    {
+      "id": "content-trend-scan",
+      "schedule": "0 6 * * 1-5",
+      "enabled": true,
+      "agent": "content-manager"
+    },
+    {
+      "id": "content-sunday-review",
+      "schedule": "0 18 * * 0",
+      "enabled": true,
+      "agent": "content-manager"
+    },
+    {
+      "id": "content-friday-report",
+      "schedule": "0 17 * * 5",
+      "enabled": true,
+      "agent": "content-manager"
+    },
+    {
+      "id": "task-coach-nudge",
+      "schedule": "*/20 5-22 * * *",
+      "enabled": true,
+      "agent": "task-coach"
+    },
+    {
+      "id": "paula-task-nudge",
+      "schedule": "0 8-20 * * *",
+      "enabled": true,
+      "agent": "task-coach",
+      "context": "{Spouse} nudge cycle — check {Spouse}'s tasks only. Gentle, one task at a time. Max 3 nudges/day."
+    },
+    {
+      "id": "email-triage",
+      "schedule": "0 11 * * *",
+      "enabled": true,
+      "agent": "finance-manager"
+    },
+    {
+      "id": "meal-plan-prompt",
+      "schedule": "0 17 * * 0",
+      "enabled": true,
+      "agent": "nutrition-chef"
+    },
+    {
+      "id": "monday-handoff",
+      "schedule": "0 5 * * 1",
+      "enabled": true,
+      "agent": "weekly-planner"
+    }
+  ]
+}
