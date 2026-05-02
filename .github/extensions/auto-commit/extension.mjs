@@ -5,10 +5,15 @@ const CWD = process.cwd();
 let pendingChanges = false;
 let lastCommitTime = 0;
 const DEBOUNCE_MS = 30000; // Don't commit more than once per 30 seconds
+const POLL_INTERVAL_MS = 5 * 60 * 1000; // Poll for uncommitted changes every 5 minutes
 
 function hasChanges() {
   try {
-    const status = execSync("git status --porcelain", { cwd: CWD, encoding: "utf-8", timeout: 5000 }).trim();
+    const status = execSync("git status --porcelain --ignore-submodules", {
+      cwd: CWD,
+      encoding: "utf-8",
+      timeout: 5000,
+    }).trim();
     return status.length > 0;
   } catch {
     return false;
@@ -38,6 +43,21 @@ function commitAndPush(detail) {
   }
 }
 
+// ── Periodic polling timer ──────────────────────────────────────────────
+// The hook-based approach only fires for the main copilot session.
+// Sub-agents launched via `task` tool run in separate processes — their
+// file changes (memory updates, task completions, data edits) never
+// trigger onPostToolUse here. This timer catches those orphaned changes.
+setInterval(() => {
+  try {
+    if (hasChanges()) {
+      commitAndPush("background sync");
+    }
+  } catch {
+    // Silently ignore — next interval will retry
+  }
+}, POLL_INTERVAL_MS);
+
 // Track which tools modify files
 const FILE_MODIFY_TOOLS = new Set([
   "create", "edit",
@@ -46,6 +66,8 @@ const FILE_MODIFY_TOOLS = new Set([
   "set_meal", "add_recipe",
   "add_expense", "add_income", "set_budget", "add_recurring_bill",
   "add_maintenance_task", "log_maintenance", "add_service_provider",
+  "update_family_member", "add_location", "update_location", "remove_location",
+  "set_home_address",
   "update_family_member",
 ]);
 
@@ -76,7 +98,11 @@ const session = await joinSession({
       // After powershell commands that might create files
       if (input.toolName === "powershell") {
         const cmd = String(input.toolArgs?.command || "").toLowerCase();
-        if (cmd.includes("add-content") || cmd.includes("set-content") || cmd.includes("out-file") || cmd.includes("new-item")) {
+        if (
+          cmd.includes("add-content") || cmd.includes("set-content") ||
+          cmd.includes("out-file") || cmd.includes("new-item") ||
+          cmd.includes(">> ") || cmd.includes("> ")
+        ) {
           if (hasChanges()) {
             pendingChanges = true;
             const result = commitAndPush("file update");
@@ -105,12 +131,12 @@ const session = await joinSession({
         const result = commitAndPush("session start cleanup");
         return {
           additionalContext:
-            `[auto-commit] Extension active — auto-commits and pushes after file changes. ${result || "No pending changes."}`,
+            `[auto-commit] Extension active — hooks + 5-min polling timer. ${result || "No pending changes."}`,
         };
       }
       return {
         additionalContext:
-          "[auto-commit] Extension active — auto-commits and pushes after file changes. Repo is clean.",
+          "[auto-commit] Extension active — hooks + 5-min polling timer. Repo is clean.",
       };
     },
   },

@@ -1,5 +1,5 @@
 /**
- * Cron Scheduler Extension for GitHub Copilot CLI
+ * Cron Scheduler Extension for {{PRODUCT}} CLI
  *
  * Reads scheduled jobs from cron.json and fires session.send() at the
  * configured times. Responses flow back through whatever messaging
@@ -197,6 +197,25 @@ async function checkSchedule(session) {
     await session.log(`⏰ [cron] Running: ${job.id} (${job.schedule})`);
 
     try {
+      // Compute timestamps at dispatch time — both UTC and local
+      const utcNow = new Date();
+      const utcISO = utcNow.toISOString();
+      const localTimeStr = utcNow.toLocaleString("en-US", {
+        timeZone: config.timezone,
+        weekday: "long",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      });
+      const timeContext =
+        `<current_datetime>${utcISO}</current_datetime>\n` +
+        `Current time: ${utcISO} (${localTimeStr} ${config.timezone})\n` +
+        `IMPORTANT: The current_datetime above is UTC. Local time is ${localTimeStr} CT. ` +
+        `Always verify by computing local time via PowerShell.`;
+
       if (job.agent) {
         // Verify the agent file exists
         const agentContent = readAgentFile(job.agent);
@@ -207,14 +226,26 @@ async function checkSchedule(session) {
           continue;
         }
 
+        // Build agent dispatch — include custom prompt if defined
+        let dispatchPrompt = `@${job.agent}\n\n${timeContext}\n\nScheduled cron job: ${job.id}`;
+        if (job.prompt) {
+          dispatchPrompt += `\n\nInstructions for this run:\n${job.prompt}`;
+        }
+        dispatchPrompt +=
+          `\nLaunch this agent as a NEW agent using the task tool. ` +
+          `DO NOT use write_agent to steer an existing running agent — ` +
+          `each cron cycle MUST get a fresh agent with clean context. ` +
+          `This is a critical rule from {{PARENT_1}}. Let the new agent run autonomously.` +
+          (job.prompt ? ` Pass the custom instructions above to the agent in its prompt.` : ``);
+
         await session.send({
-          prompt: `@${job.agent}\n\nLaunch this agent in the background using the task tool and let it run autonomously.`,
+          prompt: dispatchPrompt,
           mode: "enqueue",
         });
       } else {
         // Non-agent jobs: send prompt directly
         await session.send({
-          prompt: `[Scheduled Task: ${job.id}] ${job.prompt}`,
+          prompt: `[Scheduled Task: ${job.id}]\n${timeContext}\n\n${job.prompt}`,
           mode: "enqueue",
         });
       }
@@ -282,7 +313,9 @@ const session = await joinSession({
 
         const lines = config.jobs.map((j) => {
           const status = j.enabled === false ? "disabled" : "enabled";
-          return `• ${j.id}: ${j.schedule} [${status}]\n  "${j.prompt}"`;
+          const agent = j.agent ? ` → ${j.agent}` : "";
+          const prompt = j.prompt ? `\n  📝 "${j.prompt}"` : "";
+          return `• ${j.id}: ${j.schedule} [${status}]${agent}${prompt}`;
         });
 
         return (

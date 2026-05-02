@@ -1,5 +1,5 @@
 /**
- * Telegram Bridge Extension for GitHub Copilot CLI
+ * Telegram Bridge Extension for {{PRODUCT}} CLI
  *
  * Bridges Telegram messages <-> Copilot CLI sessions using long polling.
  * - Telegram messages become user prompts in the session.
@@ -12,8 +12,19 @@
  * (when using the standalone bridge service instead).
  */
 import { readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
-import { resolve, join, basename } from "node:path";
+import { resolve, join, basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { joinSession } from "@github/copilot-sdk/extension";
+
+// GramJS-powered large file downloader (MTProto, no 20MB limit)
+const __dirname = dirname(fileURLToPath(import.meta.url));
+let downloadLargeFile = null;
+try {
+  const mod = await import(resolve(__dirname, "gramjs-downloader.mjs"));
+  downloadLargeFile = mod.downloadLargeFile;
+} catch {
+  // GramJS not available — will fall back to Bot API (with 20MB limit)
+}
 
 // ---------------------------------------------------------------------------
 // Skip if standalone bridge service is handling Telegram
@@ -41,6 +52,8 @@ if (checkBridgeMode()) {
 const ENV_FILE = resolve(process.cwd(), ".env");
 let TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "";
 let ALLOWED_USERS_RAW = process.env.TELEGRAM_ALLOWED_USERS || "";
+let TELEGRAM_API_ID = process.env.TELEGRAM_API_ID || "";
+let TELEGRAM_API_HASH = process.env.TELEGRAM_API_HASH || "";
 
 function parseEnvFile(filePath) {
   if (!existsSync(filePath)) return;
@@ -60,6 +73,8 @@ function parseEnvFile(filePath) {
     }
     if (key === "TELEGRAM_BOT_TOKEN" && !TELEGRAM_TOKEN) TELEGRAM_TOKEN = value;
     if (key === "TELEGRAM_ALLOWED_USERS" && !ALLOWED_USERS_RAW) ALLOWED_USERS_RAW = value;
+    if (key === "TELEGRAM_API_ID" && !TELEGRAM_API_ID) TELEGRAM_API_ID = value;
+    if (key === "TELEGRAM_API_HASH" && !TELEGRAM_API_HASH) TELEGRAM_API_HASH = value;
   }
 }
 
@@ -84,7 +99,27 @@ function isUserAllowed(userId) {
 // ---------------------------------------------------------------------------
 // Telegram API helpers
 // ---------------------------------------------------------------------------
-const API_BASE = `https://api.telegram.org/bot${TELEGRAM_TOKEN}`;
+// Support custom Telegram Bot API server (local server supports up to 2GB file downloads)
+let TELEGRAM_API_SERVER = process.env.TELEGRAM_API_SERVER || "";
+if (!TELEGRAM_API_SERVER) {
+  try {
+    const envContent = existsSync(ENV_FILE) ? readFileSync(ENV_FILE, "utf-8") : "";
+    for (const line of envContent.split("\n")) {
+      const t = line.trim();
+      if (t.startsWith("TELEGRAM_API_SERVER=")) {
+        let v = t.slice("TELEGRAM_API_SERVER=".length).trim();
+        if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+        TELEGRAM_API_SERVER = v;
+      }
+    }
+  } catch { /* ignore */ }
+}
+const API_BASE_HOST = TELEGRAM_API_SERVER || `https://api.telegram.org`;
+const API_BASE = `${API_BASE_HOST}/bot${TELEGRAM_TOKEN}`;
+const FILE_BASE = `${API_BASE_HOST}/file/bot${TELEGRAM_TOKEN}`;
+
+// Telegram Bot API getFile limit: 20MB for cloud API, ~2GB for local Bot API server
+const TELEGRAM_GETFILE_LIMIT = TELEGRAM_API_SERVER ? 2000 * 1024 * 1024 : 20 * 1024 * 1024;
 
 async function telegramApi(method, body = {}) {
   const res = await fetch(`${API_BASE}/${method}`, {
@@ -208,24 +243,36 @@ async function analyzeVideoWithGemini(videoPath, videoBuffer, ext) {
   if (!apiKey) throw new Error("No Gemini API key configured");
 
   const mime = GEMINI_MIME[ext] || "video/mp4";
-  if (videoBuffer.length > 20 * 1024 * 1024) {
-    throw new Error(`Video too large (${(videoBuffer.length / 1024 / 1024).toFixed(1)}MB). Max 20MB.`);
+  // Gemini Files API supports up to 2GB uploads
+  if (videoBuffer.length > 2000 * 1024 * 1024) {
+    throw new Error(`Video too large (${(videoBuffer.length / 1024 / 1024).toFixed(1)}MB). Gemini max is 2GB.`);
   }
 
-  // 1. Upload to Gemini Files API
-  const boundary = "----GeminiBoundary" + Date.now();
-  const metadata = JSON.stringify({ file: { displayName: basename(videoPath) } });
-  const body = Buffer.concat([
-    Buffer.from(`--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadata}\r\n`),
-    Buffer.from(`--${boundary}\r\nContent-Type: ${mime}\r\n\r\n`),
-    videoBuffer,
-    Buffer.from(`\r\n--${boundary}--\r\n`),
-  ]);
-
-  const uploadRes = await fetch(`${GEMINI_BASE}/upload/v1beta/files?key=${apiKey}`, {
+  // 1. Upload to Gemini Files API using resumable upload protocol
+  const initRes = await fetch(`${GEMINI_BASE}/upload/v1beta/files?key=${apiKey}`, {
     method: "POST",
-    headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
-    body,
+    headers: {
+      "X-Goog-Upload-Protocol": "resumable",
+      "X-Goog-Upload-Command": "start",
+      "X-Goog-Upload-Header-Content-Length": String(videoBuffer.length),
+      "X-Goog-Upload-Header-Content-Type": mime,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ file: { displayName: basename(videoPath) } }),
+  });
+  if (!initRes.ok) throw new Error(`Upload init failed: ${await initRes.text()}`);
+  const uploadUrl = initRes.headers.get("x-goog-upload-url");
+  if (!uploadUrl) throw new Error("Upload init succeeded but no upload URL returned");
+
+  const uploadRes = await fetch(uploadUrl, {
+    method: "POST",
+    headers: {
+      "X-Goog-Upload-Command": "upload, finalize",
+      "X-Goog-Upload-Offset": "0",
+      "Content-Length": String(videoBuffer.length),
+      "Content-Type": mime,
+    },
+    body: videoBuffer,
   });
   if (!uploadRes.ok) throw new Error(`Upload failed: ${await uploadRes.text()}`);
   const uploaded = await uploadRes.json();
@@ -394,7 +441,7 @@ async function pollLoop(session) {
           await sendTelegramMessage(
             chatId,
             `Connected! Your chat ID is: ${chatId}\n\n` +
-              `Send any message and it will be forwarded to your GitHub Copilot CLI session.\n\n` +
+              `Send any message and it will be forwarded to your {{PRODUCT}} CLI session.\n\n` +
               `Commands:\n/status — check bridge status\n/help — show this message`
           );
           continue;
@@ -463,7 +510,7 @@ async function pollLoop(session) {
                 const fileInfo = await telegramApi("getFile", {
                   file_id: photo.file_id,
                 });
-                const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+                const fileUrl = `${FILE_BASE}/${fileInfo.file_path}`;
 
                 // Download the image
                 const imgRes = await fetch(fileUrl);
@@ -535,7 +582,7 @@ async function pollLoop(session) {
 
                 // Download voice file
                 const fileInfo = await telegramApi("getFile", { file_id: voiceObj.file_id });
-                const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+                const fileUrl = `${FILE_BASE}/${fileInfo.file_path}`;
                 const audioRes = await fetch(fileUrl);
                 const audioBuffer = Buffer.from(await audioRes.arrayBuffer());
 
@@ -591,16 +638,103 @@ async function pollLoop(session) {
           if (msg.video || msg.video_note || msg.document?.mime_type?.startsWith("video/")) {
             const videoObj = msg.video || msg.video_note || msg.document;
             const caption = msg.caption || "";
-            await session.log(`🎬 [Telegram] ${from}: video received, downloading...`);
+            const fileSize = videoObj.file_size || 0;
+            const fileSizeMB = (fileSize / (1024 * 1024)).toFixed(1);
+            await session.log(`🎬 [Telegram] ${from}: video received (${fileSizeMB}MB), checking size...`);
 
             startTypingIndicator(chatId);
+
+            // Check if the file exceeds the Telegram Bot API getFile limit (20MB for cloud API)
+            if (fileSize > TELEGRAM_GETFILE_LIMIT) {
+              const limitMB = (TELEGRAM_GETFILE_LIMIT / (1024 * 1024)).toFixed(0);
+
+              // Try MTProto download via GramJS (no file size limit)
+              if (downloadLargeFile && TELEGRAM_API_ID && TELEGRAM_API_HASH) {
+                await session.log(`🎬 Video ${fileSizeMB}MB exceeds Bot API limit — using MTProto (GramJS)...`);
+                await sendTelegramMessage(chatId, `📹 Got your video (${fileSizeMB}MB) — downloading via MTProto... ⏳`);
+
+                setTimeout(async () => {
+                  try {
+                    const dataDir = resolve(process.cwd(), "data");
+                    const ext = (videoObj.file_name || videoObj.mime_type || "mp4").split(/[./]/).pop() || "mp4";
+                    const videoFile = resolve(dataDir, `telegram-video-${Date.now()}.${ext}`);
+
+                    await downloadLargeFile({
+                      fileId: videoObj.file_id,
+                      fileSize,
+                      outputPath: videoFile,
+                      botToken: TELEGRAM_TOKEN,
+                      apiId: TELEGRAM_API_ID,
+                      apiHash: TELEGRAM_API_HASH,
+                      logger: (msg) => session.log(`🎬 ${msg}`),
+                    });
+
+                    await session.log(`🎬 Saved to ${videoFile} (${fileSizeMB}MB)`);
+
+                    // Analyze with Gemini (Gemini supports up to 2GB via Files API)
+                    const { readFileSync: readFS } = await import("node:fs");
+                    const videoBuffer = readFS(videoFile);
+                    let summary = "(video analysis unavailable)";
+                    try {
+                      summary = await analyzeVideoWithGemini(videoFile, videoBuffer, ext);
+                      await session.log(`🎬 Gemini summary: ${summary.slice(0, 120)}...`);
+                    } catch (gemErr) {
+                      await session.log(`🎬 Gemini analysis failed: ${gemErr.message}`, { level: "warning" });
+                    }
+
+                    await sendTelegramMessage(chatId, `✅ Video downloaded and analyzed! Processing your request...`);
+
+                    const captionPart = caption ? ` Caption: "${caption}".` : "";
+                    await session.send({
+                      prompt: `[Telegram from ${from} (user ${userId})]: Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`,
+                      mode: "immediate",
+                    });
+                  } catch (err) {
+                    await session.log(`🎬 MTProto download error: ${err.message}`, { level: "warning" });
+                    await sendTelegramMessage(chatId,
+                      `❌ MTProto download failed: ${err.message.slice(0, 150)}\n\n` +
+                      `**Workaround:** Save the video locally and share the file path:\n` +
+                      `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\``
+                    );
+                    const captionPart = caption ? ` Caption: "${caption}".` : "";
+                    await session.send({
+                      prompt: `[Telegram from ${from} (user ${userId})]: Sent a video (${fileSizeMB}MB) but MTProto download failed: ${err.message}.${captionPart} The user has been asked to share the file path instead.`,
+                      mode: "immediate",
+                    });
+                  }
+                }, 0);
+                continue;
+              }
+
+              // No MTProto available — fall back to asking for file path
+              await session.log(`🎬 Video too large (${fileSizeMB}MB > ${limitMB}MB) and MTProto not configured`, { level: "warning" });
+
+              await sendTelegramMessage(chatId,
+                `📹 Got your video (${fileSizeMB}MB) but Telegram's Bot API has a ${limitMB}MB download limit.\n\n` +
+                (downloadLargeFile
+                  ? `**To enable large file downloads**, add to your .env:\n\`TELEGRAM_API_ID=your_id\`\n\`TELEGRAM_API_HASH=your_hash\`\n(Get them free at https://my.telegram.org/apps)\n\n`
+                  : "") +
+                `**Workaround:** Save the video to your computer and share the file path:\n` +
+                `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\`\n\n` +
+                `I'll pick it up from there and handle the rest! 🎬`
+              );
+
+              // Still forward the caption/intent to the session so the agent knows what the user wants
+              const captionPart = caption ? ` Caption: "${caption}".` : "";
+              await session.send({
+                prompt: `[Telegram from ${from} (user ${userId})]: Sent a video (${fileSizeMB}MB) but it exceeds the Telegram Bot API ${limitMB}MB download limit.${captionPart} The user has been asked to share the file path instead. Wait for them to provide a local file path.`,
+                mode: "immediate",
+              });
+              continue;
+            }
 
             setTimeout(async () => {
               try {
                 const fileInfo = await telegramApi("getFile", { file_id: videoObj.file_id });
-                const fileUrl = `https://api.telegram.org/file/bot${TELEGRAM_TOKEN}/${fileInfo.file_path}`;
+                const fileUrl = `${FILE_BASE}/${fileInfo.file_path}`;
                 await session.log(`🎬 Downloading: ${fileInfo.file_path}`);
                 const videoRes = await fetch(fileUrl);
+                if (!videoRes.ok) throw new Error(`Download failed: HTTP ${videoRes.status}`);
                 const videoBuffer = Buffer.from(await videoRes.arrayBuffer());
 
                 // Save video file (kept for downstream agents to use)
@@ -627,7 +761,22 @@ async function pollLoop(session) {
                 });
               } catch (err) {
                 await session.log(`🎬 Video error: ${err.message}`, { level: "warning" });
-                await sendTelegramMessage(chatId, `❌ Failed to process video: ${err.message.slice(0, 200)}`);
+                // Detect the "file is too big" error from Telegram API (fallback for when file_size wasn't available)
+                if (err.message.includes("file is too big") || err.message.includes("file_size")) {
+                  await sendTelegramMessage(chatId,
+                    `📹 This video is too large for Telegram's Bot API download limit (20MB).\n\n` +
+                    `**Workaround:** Save it locally and share the file path:\n` +
+                    `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\`\n\n` +
+                    `I'll handle it from there! 🎬`
+                  );
+                  const captionPart = caption ? ` Caption: "${caption}".` : "";
+                  await session.send({
+                    prompt: `[Telegram from ${from} (user ${userId})]: Sent a video but it exceeds the Telegram Bot API 20MB download limit.${captionPart} The user has been asked to share the file path instead.`,
+                    mode: "immediate",
+                  });
+                } else {
+                  await sendTelegramMessage(chatId, `❌ Failed to process video: ${err.message.slice(0, 200)}`);
+                }
               }
             }, 0);
             continue;
@@ -717,7 +866,7 @@ const session = await joinSession({
       // Get current local time in Central timezone
       const now = new Date();
       const localTime = now.toLocaleString("en-US", {
-        timeZone: "America/Chicago",
+        timeZone: "{{TIMEZONE}}",
         weekday: "long",
         year: "numeric",
         month: "long",
@@ -727,17 +876,39 @@ const session = await joinSession({
         hour12: true,
       });
 
-      // Let the AI pick the right agent — no heuristics
+      // Smart dispatch — steer existing agents for follow-ups, launch fresh for new topics
       return {
         modifiedPrompt:
           `[Telegram from ${senderName} (user ${senderId})]: "${userMessage}"\n\n` +
           `Current time: ${localTime} (Central Time).\n` +
-          `MANDATORY: You MUST delegate this to a background agent using the task tool. Do NOT handle this inline.\n` +
-          `1. Pick the best custom agent_type (or use general-purpose if none fits)\n` +
-          `2. Launch it with task tool (mode="background")\n` +
-          `3. The agent handles everything and responds via telegram_send_message (chat_id: "${senderId}")\n` +
-          `4. You only send a Telegram yourself for trivial acknowledgments (e.g., "goodnight", "thanks") — everything else MUST be delegated.\n` +
-          `5. Continue immediately after launching — do not wait.`,
+          `MANDATORY: You MUST delegate this to background agent(s). Do NOT handle this inline.\n\n` +
+          `## STEP 0: STEER vs LAUNCH DECISION (check BEFORE delegating)\n` +
+          `Call list_agents() first to see IDLE/RUNNING background agents.\n` +
+          `Then decide for EACH distinct task in the message:\n\n` +
+          `**STEER an existing agent (write_agent) WHEN ALL of these are true:**\n` +
+          `- An IDLE agent exists that was working on a RELATED topic (same domain, same conversation thread)\n` +
+          `- The new message is a FOLLOW-UP — correcting, clarifying, adding to, or continuing a prior discussion\n` +
+          `  (e.g., "No, the Savor is the subscription card", "also add milk", "what about the other one?")\n` +
+          `- The existing agent has CONTEXT that would be LOST by launching fresh (names, decisions, partial work)\n` +
+          `- The task is in the SAME domain as what that agent was doing\n` +
+          `→ Use write_agent(agent_id, message) to inject the follow-up. The agent wakes up with full prior context.\n\n` +
+          `**LAUNCH a NEW agent (task tool) WHEN ANY of these are true:**\n` +
+          `- The message is a NEW topic unrelated to any running/idle agent's context\n` +
+          `- No idle agents exist, or none have relevant context\n` +
+          `- High-quality results are needed with NO dependency on prior context (fresh analysis, clean slate)\n` +
+          `- The message is clearly a standalone request (e.g., "what's the weather?", "add eggs to the list")\n` +
+          `- You're unsure whether to steer or launch → LAUNCH NEW (safer — clean context never hurts)\n\n` +
+          `## STEP 1: Analyze the message\n` +
+          `- Identify how many distinct tasks/requests it contains\n` +
+          `- For EACH task, apply the steer-vs-launch decision above\n\n` +
+          `## STEP 2: Execute\n` +
+          `- For follow-ups → write_agent to the relevant idle agent\n` +
+          `- For new requests → launch via task tool (pick the best custom agent_type, or general-purpose if none fits)\n` +
+          `- If MULTIPLE independent new requests, launch MULTIPLE agents in parallel\n` +
+          `- Each agent responds via telegram_send_message (chat_id: "${senderId}")\n\n` +
+          `## STEP 3: Acknowledge & continue\n` +
+          `- You only send a Telegram yourself for trivial acknowledgments (e.g., "goodnight", "thanks")\n` +
+          `- Continue immediately after dispatching — do not wait for results.`,
       };
     },
 
@@ -765,6 +936,14 @@ const session = await joinSession({
             description:
               "Target Telegram chat ID. Omit to use the last active chat.",
           },
+          speak: {
+            type: "string",
+            description:
+              "Short TTS text for Tasker integration (1-2 sentences, no emojis/markdown). " +
+              "When provided, 'SPEAK: [text]' is prepended to the message so it appears in notification previews. " +
+              "ALWAYS use this when sending to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). " +
+              "Do NOT use for {{PARENT_2}} ({{TELEGRAM_PARENT_2}}) — she doesn't use Tasker TTS.",
+          },
         },
         required: ["message"],
       },
@@ -785,7 +964,12 @@ const session = await joinSession({
           };
         }
         try {
-          await sendTelegramMessage(targetChat, args.message);
+          // Compose final message: prepend SPEAK: line if speak parameter provided
+          let finalMessage = args.message;
+          if (args.speak && args.speak.trim()) {
+            finalMessage = `SPEAK: ${args.speak.trim()}\n\n${args.message}`;
+          }
+          await sendTelegramMessage(targetChat, finalMessage);
           return `Message sent to Telegram chat ${targetChat}`;
         } catch (err) {
           return {
@@ -932,7 +1116,7 @@ session.on("user.message", (event) => {
 });
 
 session.on("assistant.message", async (event) => {
-  // Auto-forwarding DISABLED by default (2026-04-12)
+  // Auto-forwarding DISABLED per {{PARENT_1}}'s request (2026-04-12)
   // Agents use telegram_send_message directly when they need to communicate.
   // This prevents duplicate/noisy messages from every assistant response.
   return;
