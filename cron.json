@@ -1,5 +1,5 @@
 {
-  "timezone": "America/Chicago",
+  "timezone": "{{TIMEZONE}}",
   "jobs": [
     {
       "id": "morning-briefing",
@@ -15,7 +15,7 @@
     },
     {
       "id": "heartbeat",
-      "schedule": "*/30 5-22 * * *",
+      "schedule": "*/30 5-21 * * *",
       "enabled": true,
       "agent": "checkin"
     },
@@ -47,50 +47,180 @@
       "id": "content-trend-scan",
       "schedule": "0 6 * * 1-5",
       "enabled": true,
-      "agent": "content-manager"
+      "agent": "content-manager",
+      "prompt": "Run your morning trend scan. Focus on AI, developer tools, and your core product ecosystem. Check YouTube trending in tech and search for new blog-worthy topics."
     },
     {
       "id": "content-sunday-review",
       "schedule": "0 18 * * 0",
       "enabled": true,
-      "agent": "content-manager"
+      "agent": "content-manager",
+      "prompt": "Run your weekly content review. Summarize what published this week, engagement metrics, what's queued for next week, and any gaps in the content calendar."
     },
     {
       "id": "content-friday-report",
       "schedule": "0 17 * * 5",
       "enabled": true,
-      "agent": "content-manager"
+      "agent": "content-manager",
+      "prompt": "Generate the Friday content performance report. Include views, engagement, and top-performing posts from this week. Send summary to {{PARENT_1}} via Telegram."
+    },
+    {
+      "id": "content-issue-reconcile",
+      "schedule": "0 8 * * 1,4",
+      "enabled": true,
+      "agent": "content-manager",
+      "prompt": "Run issue reconciliation. Pull all published and scheduled posts from Late/Zernio (paginate through at least 500 of each). Pull all open issues from {{GITHUB_USERNAME}}/content-management. Fuzzy-match posts to issues by title/content overlap. For each match: leave a reconciliation comment with post IDs and dates, update the status label (status:published or status:scheduled), remove stale labels. Close fully-published issues (3+ published, 0 scheduled). Report results to {{PARENT_1}} via Telegram: posts matched, issues updated, issues closed, orphans."
     },
     {
       "id": "task-coach-nudge",
-      "schedule": "*/20 5-22 * * *",
+      "schedule": "*/20 5-21 * * *",
       "enabled": true,
       "agent": "task-coach"
-    },
-    {
-      "id": "paula-task-nudge",
-      "schedule": "0 8-20 * * *",
-      "enabled": true,
-      "agent": "task-coach",
-      "context": "{Spouse} nudge cycle — check {Spouse}'s tasks only. Gentle, one task at a time. Max 3 nudges/day."
     },
     {
       "id": "email-triage",
       "schedule": "0 11 * * *",
       "enabled": true,
-      "agent": "finance-manager"
+      "agent": "finance-manager",
+      "prompt": "Scan Gmail inbox for bills, receipts, and time-sensitive action items. Auto-log expenses from receipts, create tasks for anything needing follow-up, flag overdue bills."
+    },
+    {
+      "id": "daily-finance-review",
+      "schedule": "30 6 * * *",
+      "enabled": true,
+      "agent": "finance-manager",
+      "prompt": "Run daily financial review. Sync accounts, check for unusual charges in the last 24h, flag new subscriptions or merchants not seen before, check if any budget category hit 80%+, and send a brief Telegram summary to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). Only message if there's something actionable \u2014 no noise. Use speak parameter."
+    },
+    {
+      "id": "weekly-finance-digest",
+      "schedule": "0 8 * * 1",
+      "enabled": true,
+      "agent": "finance-manager",
+      "prompt": "Run weekly financial health digest. Compare this week's spending to last week and the 4-week average by category. Calculate month-to-date budget adherence. Check debt snowball progress. Identify subscriptions with no recent usage (> 45 days since last charge change). Find cost reduction opportunities. Send comprehensive weekly financial health report to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter. Create tasks for any action items found."
     },
     {
       "id": "meal-plan-prompt",
       "schedule": "0 17 * * 0",
       "enabled": true,
-      "agent": "nutrition-chef"
+      "agent": "nutrition-chef",
+      "prompt": "Ask {{PARENT_1}} what they want to cook next week via Telegram. Do NOT suggest recipes or meals \u2014 just ask what they want on the plan. If he already told you earlier, use set_meal to populate the plan and generate_grocery_list for the shopping list. Check data/family/kitchen-inventory.md for available equipment before confirming any meal that requires specific appliances."
     },
     {
       "id": "monday-handoff",
       "schedule": "0 5 * * 1",
       "enabled": true,
       "agent": "weekly-planner"
+    },
+    {
+      "id": "content-schedule-maintenance",
+      "schedule": "*/30 5-21 * * *",
+      "enabled": true,
+      "agent": "content-scheduler"
+    },
+    {
+      "id": "content-analytics-check",
+      "schedule": "0 8,11,14,17,20 * * *",
+      "enabled": true,
+      "agent": "content-analytics",
+      "prompt": "Run your analytics check cycle. Load memory, pull performance data across all platforms, compute deltas against previous snapshots, check for engagement anomalies. Update working memory with new snapshots. If notable findings (viral post, significant growth, engagement drop), notify {{PARENT_1}} via Telegram."
+    },
+    {
+      "id": "content-analytics-comments",
+      "schedule": "0 9,11,13,15,17,19,21 * * *",
+      "enabled": true,
+      "agent": "content-analytics",
+      "prompt": "Run your comment management cycle. Load memory, scan recently published posts (last 48h) for new comments. Classify comments by sentiment. Auto-reply to questions, positive feedback, and constructive criticism following {{GITHUB_USERNAME}} brand voice. Flag comments needing {{PARENT_1}}'s personal attention via add_task. Max 20 replies per cycle. Log all activity."
+    },
+    {
+      "id": "content-analytics-weekly-report",
+      "schedule": "0 18 * * 0",
+      "enabled": true,
+      "agent": "content-analytics",
+      "prompt": "Generate the weekly performance report. Pull 7-day analytics across all platforms. Calculate: total reach, total engagement, avg engagement rate, top 3 posts, bottom 3 posts, follower growth. Compare week-over-week. Compute pillar-by-pillar performance breakdown. Identify content type and timing patterns. Generate actionable recommendations. Send full report to {{PARENT_1}} via Telegram (chat_id: {{TELEGRAM_PARENT_1}})."
+    },
+    {
+      "id": "repo-maintainer-pr-review",
+      "schedule": "0 7,9,11,13,15,17,19 * * *",
+      "enabled": true,
+      "agent": "repo-maintainer",
+      "prompt": "Run PR review cycle. Scan all {{GITHUB_USERNAME}} repos for open PRs. Apply merge policy: auto-merge dependabot/bot PRs with green CI (squash + delete branch), review {{PARENT_1}}'s PRs and notify, close stale assistant drafts >60 days. Max 10 auto-merges per run. Only message {{PARENT_1}} if actions were taken."
+    },
+    {
+      "id": "repo-maintainer-issue-triage",
+      "schedule": "0 8 * * *",
+      "enabled": true,
+      "agent": "repo-maintainer",
+      "prompt": "Run issue triage cycle. Search for untriaged issues across {{GITHUB_USERNAME}} repos (no:label or no:assignee). Auto-label by content pattern. Assign straightforward bugs/features/docs to the coding assistant. Flag security issues to {{PARENT_1}} immediately. Close stale issues >180 days with no activity. Don't close content-management issues (content backlog). Only message {{PARENT_1}} if actions were taken."
+    },
+    {
+      "id": "repo-maintainer-weekly-report",
+      "schedule": "0 20 * * 0",
+      "enabled": true,
+      "agent": "repo-maintainer",
+      "prompt": "Generate weekly repo health report. Scan all {{GITHUB_USERNAME}} repos: count open PRs/issues, check CI status, identify stale items, count what was merged/closed this week. Send structured Telegram report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). Always send this report even if everything is clean."
+    },
+    {
+      "id": "context-audit-weekly",
+      "schedule": "0 20 * * 0",
+      "enabled": true,
+      "agent": "context-auditor",
+      "prompt": "Run FULL weekly context audit. Load memory. Collect ALL files in audit scope: constitution.md, copilot-instructions.md, standing-orders.md, all .github/agents/*.agent.md, all data/agents/*/core.md, all data/agents/*/working.md, cron.json. Measure file sizes and estimate token counts. Launch parallel sub-agents with different models: (1) claude-sonnet-4.5 for contradiction detection, (2) claude-haiku-4.5 for redundancy/bloat analysis, (3) claude-opus-4.5 for skill extraction opportunities. Synthesize findings. Auto-fix safe issues (stale dates, typos, dead references, exact duplicates). Create tasks for complex fixes needing approval. Commit auto-fixes via gh hookflow git-push. Send structured report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) with: files scanned, issues by severity, auto-fixes applied, top findings, token budget per agent. Update memory."
+    },
+    {
+      "id": "context-audit-daily",
+      "schedule": "0 6 * * *",
+      "enabled": true,
+      "agent": "context-auditor",
+      "prompt": "Run QUICK daily context scan. Load memory. Focus on: (1) Contradiction check \u2014 scan foundational docs vs agent definitions for rule conflicts. (2) Working memory freshness \u2014 flag any data/agents/*/working.md not updated in 3+ days that has an active cron job. (3) Cron alignment \u2014 verify every cron.json agent entry has a matching .agent.md file. No auto-fixes. Accumulate findings for weekly audit. Only message {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) if critical contradictions found. Update memory."
+    },
+    {
+      "id": "parenting-coach-morning",
+      "schedule": "0 8 * * *",
+      "enabled": true,
+      "agent": "parenting-coach",
+      "prompt": "Morning parenting check-in. Load your memory tiers. Compute current CT time. Review the family's current parenting situations \u2014 {{CHILD_1_NAME}}'s sibling adjustment, newborn parenting dynamics, and {{PARENT_2}}'s confidence indicators. Send ONE proactive tip or pep talk to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) based on what's relevant today. Vary content: tips, gotchas, celebrations, situational advice. If there's a specific situation being tracked, follow up on it. Keep {{PARENT_2}} messages rare and warm (2-3 lines max, only if genuinely encouraging). Create tasks for any parenting actions needed. Update working memory."
+    },
+    {
+      "id": "parenting-coach-afternoon",
+      "schedule": "0 14 * * *",
+      "enabled": true,
+      "agent": "parenting-coach",
+      "prompt": "Afternoon parenting check-in. Load your memory tiers. Compute current CT time. This is typically post-care-visit time \u2014 check if there's guidance needed for {{CHILD_1_NAME}} after parents return from hospital. Provide situational advice if an active parenting situation needs follow-up. If nothing active, share a quick anticipatory tip or stay silent. Don't repeat morning's message topic. Max 1 Telegram to {{PARENT_1}}. Update working memory."
+    },
+    {
+      "id": "content-creative-daily",
+      "schedule": "0 7 * * 1-5",
+      "enabled": true,
+      "agent": "content-creative",
+      "prompt": "Daily LinkedIn post generation. Load your memory. Compute current CT time. Select a topic from: (1) {{GITHUB_USERNAME}}/content-management issues with status:ready or status:idea labels, (2) trending AI/dev topics via perplexity, (3) content pillar rebalancing. Research the topic. Write a LinkedIn post in the account owner's voice. Generate an AI image via OpenAI. Upload to Late and schedule for the next optimal LinkedIn posting time. Send {{PARENT_1}} a preview via Telegram. Update memory."
+    },
+    {
+      "id": "entrepreneur-coach-daily",
+      "schedule": "0 9 * * *",
+      "enabled": true,
+      "agent": "entrepreneur-coach",
+      "prompt": "Daily entrepreneurship check-in. Load entrepreneur-coach memory AND read data/agents/entrepreneur-driver/working.md for execution state. Compute current CT time. Review strategy priorities, shipped assets, scheduled validation posts, open entrepreneur tasks, and any signs of progress or drift. Push {{PARENT_1}} toward ONE high-leverage next move only \u2014 not a giant list. If there is nothing meaningful to push, stay silent. Create tasks for any newly discovered entrepreneurship actions. Update entrepreneur-coach memory and events log before ending."
+    },
+    {
+      "id": "template-scheduler",
+      "schedule": "*/15 5-21 * * *",
+      "enabled": true,
+      "agent": "platform-manager",
+      "prompt": "Run check_scheduled_triggers from the action-tracker extension.This evaluates schedule-based template triggers (e.g., parent-2-shower at 7 PM daily). Auto-expand templates with auto_expand=true, suggest others via Telegram to {{PARENT_1}}. Quick check \u2014 skip if nothing is due."
+    },
+    {
+      "id": "work-life-sync",
+      "schedule": "0 6,9,12,15,18 * * 1-5",
+      "enabled": true,
+      "agent": "work-life-sync",
+      "prompt": "Run calendar-to-Outlook availability sync. Load memory tiers. Compute current CT time. Check Google OAuth status \u2014 if expired, create ONE re-auth task and stop. Fetch personal Google Calendar events (next 3 days). Filter: weekdays only, time-bound (or all-day with PTO keywords), future only. Compute delta against synced events in working memory. For new/changed/deleted events, send structured mesh message to msix-home with OOF block instructions (showAs=oof, private, no attendees, no Teams, timezone {{TIMEZONE}}). Update sync state in working memory. Only message {{PARENT_1}} on errors. Update events.log."
+    },
+    {
+      "id": "cloud-cost-audit",
+      "schedule": "0 8 * * 1",
+      "enabled": true,
+      "agent": "cloud-advisor",
+      "prompt": "Run weekly AWS cost audit. Load memory tiers. Scan all regions for resources: EC2 instances (running + stopped), unattached EBS volumes, unassociated Elastic IPs, RDS instances, S3 buckets without lifecycle policies, idle Lambda functions. Pull Cost Explorer data for current month vs last month. Auto-cleanup: delete unattached EBS volumes, release unassociated EIPs, abort stale multipart uploads. Calculate total waste eliminated. Create tasks for optimizations requiring approval (instance termination, rightsizing). Send structured cost report to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter. Update working memory with new inventory and cost data."
     }
   ]
 }
