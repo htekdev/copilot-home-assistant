@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join, resolve, dirname } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { joinSession } from "@github/copilot-sdk/extension";
+import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
 
 const REPO_ROOT = resolve(
   dirname(import.meta.url.replace("file:///", "")),
@@ -555,7 +555,7 @@ function listTasks(args) {
 }
 
 function updateTask(args) {
-  const { id, status, priority, assignee, due_date, notes, title, category, recurrence, location, surface, created_by } = args;
+  const { id, status, priority, assignee, due_date, notes, title, category, recurrence, location, depends_on, surface, created_by } = args;
   if (!id) return "Error: id is required.";
 
   const existing = db.prepare("SELECT * FROM actions WHERE id = ?").get(id);
@@ -590,6 +590,22 @@ function updateTask(args) {
   }
   if (created_by !== undefined) {
     updates.push("created_by = ?"); params.push(created_by);
+  }
+
+  if (depends_on !== undefined) {
+    const deps = depends_on.split(",").map(d => d.trim()).filter(Boolean);
+    for (const dep of deps) {
+      const depExists = db.prepare("SELECT id FROM actions WHERE id = ?").get(dep);
+      if (!depExists) {
+        return `Error: Dependency '${dep}' not found. Cannot update task with missing dependency.`;
+      }
+    }
+
+    db.prepare("DELETE FROM action_deps WHERE action_id = ?").run(id);
+    for (const dep of deps) {
+      db.prepare("INSERT OR IGNORE INTO action_deps (action_id, depends_on) VALUES (?, ?)").run(id, dep);
+    }
+    updates.push("depends_on_csv = ?"); params.push(depends_on);
   }
 
   if (updates.length === 0) return "No fields to update.";
@@ -1142,7 +1158,7 @@ const tools = [
       type: "object",
       properties: {
         title: { type: "string", description: "Task title (required)" },
-        assignee: { type: "string", description: "Who is responsible: hector, paula, shared, hector-jr, or empty" },
+        assignee: { type: "string", description: "Who is responsible: {{PARENT_1}}, {{PARENT_2}}, shared, {{PARENT_1}}-jr, or empty" },
         priority: { type: "string", enum: ["urgent", "high", "medium", "low"], description: "Priority level (default: medium)" },
         due_date: { type: "string", description: "Due date (YYYY-MM-DD)" },
         notes: { type: "string", description: "Additional notes" },
@@ -1194,6 +1210,7 @@ const tools = [
         category: { type: "string", description: "New category" },
         recurrence: { type: "string", description: "New recurrence pattern" },
         location: { type: "string", description: "New location" },
+        depends_on: { type: "string", description: "Comma-separated IDs of prerequisite tasks" },
         surface: { type: "string", enum: ["human", "agent", "notify"], description: "New visibility level" },
         created_by: { type: "string", description: "Update the creator (for migration/correction)" },
       },
@@ -1254,7 +1271,7 @@ const tools = [
     parameters: {
       type: "object",
       properties: {
-        template_id: { type: "string", description: "Template ID (e.g., 'chicken_marination', 'paula_shower'). Use list_templates to see available." },
+        template_id: { type: "string", description: "Template ID (e.g., 'chicken_marination', '{{PARENT_2}}_shower'). Use list_templates to see available." },
         overrides: { type: "string", description: "JSON object of per-task overrides. Keys are task keys, values are objects with title/priority/assignee/etc. Use _variables key for title template substitutions." },
         assignee: { type: "string", description: "Override default assignee for all tasks" },
         due_date: { type: "string", description: "Set due date for all tasks (YYYY-MM-DD)" },
