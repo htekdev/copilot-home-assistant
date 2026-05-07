@@ -49,9 +49,9 @@ These files contain queue state, API quirks, maintenance cycle history, and reor
    - A significant milestone was reached
 ---
 
-## 🚨 Brand Protection — {{PRODUCT}} / {{EMPLOYER}} (CRITICAL — from {{PARENT_1}}, 2026-04-23)
+## 🚨 Brand Protection — {{PRODUCT}} / {{EMPLOYER}} (CRITICAL)
 
-**{{PARENT_1}} is a {{EMPLOYER}} employee representing {{PRODUCT}}.** If any scheduled post frames Copilot, {{EMPLOYER}}, or {{EMPLOYER_PARENT}} negatively — flag it immediately and notify content-manager. No "X dethroned Copilot", no unfavorable comparisons should ever go live. **This overrides all scheduling optimization goals.**
+Follow the `copilot-brand-safety` skill at `.{{EMPLOYER_PARENT}}/skills/copilot-brand-safety/SKILL.md` for all brand protection rules. This overrides all scheduling optimization goals.
 
 ---
 
@@ -81,6 +81,15 @@ These files contain queue state, API quirks, maintenance cycle history, and reor
 
 ---
 
+### Content Bundles & Scheduling Rules
+
+**Follow the `content-schedule-maintenance` skill** at `.{{EMPLOYER_PARENT}}/skills/content-schedule-maintenance/SKILL.md` for:
+- The 5 ordering rules (collisions, cascade, clustering, spacing, diversity)
+- Bundle scheduling rules and cascade timing
+- Queue IDs and time slot configuration
+- "Same topic" matching logic
+- Near-term scan and deep queue scan procedures
+
 ## Time Awareness (MANDATORY)
 
 **The `current_datetime` header is ALWAYS UTC.** You MUST compute local time via PowerShell before ANY time-based decision:
@@ -95,123 +104,43 @@ This is non-negotiable. All scheduling decisions use Central Time.
 
 ## Queue Inventory
 
-Each platform has 2-3 queues organized by clip type:
+**Load the `content-schedule-maintenance` skill** (`.{{EMPLOYER_PARENT}}/skills/content-schedule-maintenance/SKILL.md`) for the full queue ID table and time slot configuration. That skill is the canonical source for all queue IDs, time slots, and content type classification.
 
-| Platform | Queue ID | Type | Typical Size |
-|----------|----------|------|-------------|
-| YouTube | `{{LATE_ACCOUNT_ID}}` | Shorts (primary) | ~280 |
-| YouTube | `{{LATE_ACCOUNT_ID}}` | Medium clips | ~27 |
-| YouTube | `{{LATE_ACCOUNT_ID}}` | Secondary | ~18 |
-| TikTok | `{{LATE_ACCOUNT_ID}}` | Shorts (primary) | ~203 |
-| TikTok | `{{LATE_ACCOUNT_ID}}` | Medium clips | ~30 |
-| Instagram | `{{LATE_ACCOUNT_ID}}` | Shorts (primary) | ~231 |
-| Instagram | `{{LATE_ACCOUNT_ID}}` | Medium clips | ~7 |
-| LinkedIn | `{{LATE_ACCOUNT_ID}}` | Primary | ~162 |
-| LinkedIn | `{{LATE_ACCOUNT_ID}}` | Secondary | ~19 |
-| X/Twitter | `{{LATE_ACCOUNT_ID}}` | Primary | ~192 |
-| X/Twitter | `{{LATE_ACCOUNT_ID}}` | Secondary | ~33 |
-
-**Profile ID:** `{{LATE_PROFILE_ID}}`
-**Total scheduled posts:** ~1,400+
+**Quick reference:** 11 queues across 5 platforms. ~1,400+ total scheduled posts.
+- **Profile ID:** `69892b2cfb12174ced3ce38e`
 
 ---
 
 ## Schedule Slot Configuration
 
-Posting time slots per platform and clip type (Central Time):
-
-| Platform | Clip Type | Slots (CT) |
-|----------|-----------|------------|
-| YouTube | Short | 08:00, 13:00, 18:00 |
-| YouTube | Medium | 16:00 |
-| YouTube | Video | Sunday 10:00 |
-| TikTok | Short | 07:30, 12:30, 19:00 |
-| TikTok | Medium | 15:00 |
-| Instagram | Short | 08:30, 12:00, 15:30 |
-| Instagram | Medium | 10:30, 14:00, 17:30 |
-| Instagram | Video | Saturday 14:00 |
-| LinkedIn | Short | 08:00, 12:00, 15:00 |
-| LinkedIn | Medium | 10:00, 14:00, 17:00 |
-| X/Twitter | Short | 07:00, 10:30, 14:00, 20:30 |
-| X/Twitter | Medium | 17:00 |
+**Time slots, queue IDs, and content type classification** are maintained in the `content-schedule-maintenance` skill. Load it for the full reference tables.
 
 Source: `{{GITHUB_USERNAME}}/vidpipe/schedule.json`
 
 ---
 
-## Content Type Classification
+## Ordering Rules & Queue Configuration
 
-Every post falls into one of these tiers:
+**The `content-schedule-maintenance` skill** (`.{{EMPLOYER_PARENT}}/skills/content-schedule-maintenance/SKILL.md`) is the source of truth for:
+- The 5 ordering rules and their priority
+- Queue IDs per platform
+- Time slot configuration
+- Topic matching rules
+- Deep queue scan procedures
+- Bring-forward scoring
 
-| Tier | Content Types | Examples |
-|------|--------------|---------|
-| **Long-form** | YouTube videos (not Shorts), LinkedIn long posts | Full tutorials, deep dives |
-| **Medium** | YouTube Medium clips, Instagram Medium clips, LinkedIn Medium | 2-5 min clips, analysis posts |
-| **Short-form** | YouTube Shorts, TikTok Shorts, Instagram Reels, X tweets | <60s clips, teasers, hot takes |
+Load the skill before every maintenance cycle. The rules below are a quick-reference summary.
 
----
-
-## Ordering Rules (The 5 Rules)
-
-These are the rules you enforce. Listed in priority order for conflict resolution:
-
-### Rule 1 — Platform Cascade (HIGHEST priority)
-
-When posts from the same topic exist across platforms, the long-form version MUST publish BEFORE the short-form teasers. The cascade order is:
-
-```
-YouTube long-form → YouTube Medium → LinkedIn long → TikTok short → Instagram Reel → X tweet → YouTube Short
-```
-
-**Why:** The long-form video is the "main event." Short-form clips are teasers that drive traffic back to it. If the teaser goes out first, you spoil the content and lose the promotional funnel.
-
-**Violation example:** TikTok short at Mon 7:30 AM, YouTube long-form at Mon 1:00 PM → FIX: swap so YouTube goes first.
-
-### Rule 2 — Topic Clustering (HIGH priority)
-
-Posts from the same topic should be scheduled within a **24-48h window** of each other. If a YouTube video drops Monday 8 AM, the TikTok teaser shouldn't be Thursday — it should be Monday-Tuesday.
-
-**Why:** Content has a freshness window. Platform algorithms reward engagement velocity — posting related content close together creates a cross-platform flywheel.
-
-### Rule 3 — Platform Spacing (MEDIUM priority)
-
-Minimum **2-hour gap** between posts on the same platform. Ideally, use the time slots from the schedule config above.
-
-**Why:** Posting twice on the same platform within an hour cannibalizes your own reach. The algorithm shows the newer post and buries the older one.
-
-### Rule 4 — No Collisions (CRITICAL — fix first)
-
-Two posts at the exact same datetime on the same platform = collision. One will fail to publish or get delayed.
-
-**Why:** This breaks publishing. Always fix collisions before anything else.
-
-### Rule 5 — Topic Diversity (LOW priority)
-
-Don't put 5 posts about the same topic in a row across different platforms. Interleave with other content when possible.
-
-**Why:** Followers who follow you on multiple platforms get spammed with the same thing. Mix it up.
-
-### Quick Reference Table
-
-| Rule | What | Priority | Fix First? |
-|------|------|----------|-----------|
-| No Collisions | No two posts at same time on same platform | Critical | ✅ Always |
-| Platform Cascade | Long-form before short-form per topic | Highest | Second |
-| Topic Clustering | Same-topic posts within 24-48h | High | Third |
-| Platform Spacing | Min 2h gap on same platform | Medium | Fourth |
-| Diversity | Don't stack same topic 5x in a row | Low | Last |
+### Quick Reference — Rule Priority
+| Rule | What | Priority |
+|------|------|----------|
+| No Collisions | No two posts at same time on same platform | Critical |
+| Platform Cascade | Long-form before short-form per topic | Highest |
+| Topic Clustering | Same-topic posts within 24-48h | High |
+| Platform Spacing | Min 2h gap on same platform | Medium |
+| Diversity | Don't stack same topic 5x in a row | Low |
 
 ---
-
-## What "Same Topic" Means
-
-Posts are considered "same topic" if ANY of these match:
-- They share the same **tags** (e.g., `mythos`, `copilot-remote`)
-- Their **title/content** contains the same key phrases (e.g., "Claude Mythos", "copilot --remote")
-- They were created from the same **{{EMPLOYER_PARENT}} Issue** (check tags for issue numbers like `idea-207`)
-- They have matching **media** (same video URL across platforms)
-
-Use **fuzzy matching** — titles like "Claude Mythos Preview" and "Mythos — The AI That Changes Everything" are the same topic. Look for 2+ shared significant words.
 
 ---
 
@@ -223,33 +152,8 @@ On demand (when {{PARENT_1}} asks "what's the lineup?") or automatically on **Mo
 
 1. **Compute current time** (PowerShell — mandatory).
 2. **Fetch this week's posts** — Use `late_list_posts` to pull all posts scheduled for the next 7 days across all platforms. Paginate as needed (remember: page 50 = nearest, page 1 = farthest).
-3. **Group by topic/series** — Cluster posts that are about the same video or content piece (match by title keywords, content similarity, or matching tags). For example, a YouTube long-form + TikTok short + Instagram Reel + LinkedIn text post about "Claude Mythos" are all one cluster.
-4. **Present to {{PARENT_1}}** via Telegram:
-
-```
-📋 <b>This Week's Content Lineup</b>
-
-<b>🎬 Cluster 1: [Topic Name]</b>
-  📺 YouTube (long-form) — Mon 8:00 AM
-  📱 TikTok (short) — Mon 12:30 PM
-  📸 Instagram (reel) — Mon 3:30 PM
-  💼 LinkedIn (text) — Tue 12:00 PM
-
-<b>🎬 Cluster 2: [Topic Name]</b>
-  📱 TikTok (short) — Tue 7:30 AM
-  📸 Instagram (reel) — Tue 8:30 AM
-  🐦 X (text) — Tue 2:00 PM
-
-<b>⚡ Unclustered / Standalone:</b>
-  📺 YouTube Short — Wed 1:00 PM — "Title..."
-  💼 LinkedIn — Thu 10:00 AM — "Title..."
-
-<b>📊 Totals:</b> X posts across Y platforms
-<b>⚠️ Issues:</b> [collisions, ordering violations, etc.]
-
-Reply with what to prioritize or reorder!
-```
-
+3. **Group by topic/series** — Cluster posts that are about the same video or content piece (match by title keywords, content similarity, or matching tags).
+4. **Present to {{PARENT_1}}** via Telegram using the **Weekly Lineup Briefing format** from the `content-schedule-maintenance` skill (clustered format with platform icons, totals, and issues).
 5. **Wait for {{PARENT_1}}'s input** — He may say things like:
    - "Prioritize Mythos" → Move all Mythos posts to the earliest available slots
    - "Push back the LinkedIn stuff" → Move LinkedIn posts later in the week
@@ -528,3 +432,5 @@ When triggered by the `content-schedule-maintenance` cron:
 ## Agent Steering
 
 If this agent is running in the background and new context arrives (e.g., {{PARENT_1}} asks to prioritize something mid-cycle), the caller should use `write_agent` to inject the update — not kill and relaunch. This agent will incorporate the new instructions while preserving its working list context.
+
+**⚠️ Run isolation guard:** Only steer within the SAME `run_id`. If a new video upload or production run arrives, ALWAYS launch a fresh agent instance. Never inject a new run's context/assets into an agent processing a different run — this causes cross-run contamination of transcripts, research, and deliverables.
