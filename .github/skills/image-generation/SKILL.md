@@ -1,6 +1,6 @@
 ---
 name: image-generation
-description: AI image generation for {{GITHUB_USERNAME}} social media — OpenAI gpt-image-2 API, geometric abstract design, premium tech aesthetic, and upload workflow. Use when user says "generate image", "create image", "AI image", "post image", "infographic", "social media graphic", "image for post", or any image generation activity.
+description: AI image generation for {{GITHUB_USERNAME}} social media — OpenAI gpt-image-2 API, {{PERSONAL_DOMAIN}} brand palette, professional infographic style, and upload workflow. Use when user says "generate image", "create image", "AI image", "post image", "infographic", "social media graphic", "image for post", or any image generation activity.
 ---
 
 # Image Generation Skill
@@ -10,38 +10,45 @@ Canonical workflow for generating AI images for {{GITHUB_USERNAME}} social media
 ## Core Rules
 
 1. **Every image MUST be an infographic** — when someone sees it, they should understand the entire post topic at a glance
-2. **Every image MUST be premium and elegant** — sophisticated, future-forward. Think Stripe design language meets AI conference keynote
-3. **NEVER use transparent backgrounds** — always specify a solid gradient background (deep purple to midnight blue)
-4. **Always include '@{{GITHUB_USERNAME}}' watermark** in small gold text, bottom-right corner
+2. **Every image MUST be premium and professional** — clean, modern, authoritative. Think polished tech company marketing, NOT sci-fi
+3. **NEVER use transparent backgrounds** — always specify a solid dark navy-charcoal background
+4. **Always include '@{{GITHUB_USERNAME}}' watermark** in small light text, bottom-right corner
 5. **1024x1024 square** — works across all platforms
 6. **NO stock photos, NO people, NO cartoon illustrations**
 7. **Text in images IS expected** — headlines, stats, key points. gpt-image-2 handles text well
 
-## Visual Design System (Geometric Abstract — chosen by {{PARENT_1}} 2026-05-04)
+## Visual Design System ({{PERSONAL_DOMAIN}} Brand Palette — approved by {{PARENT_1}} 2026-05-15)
+
+The design system is derived from the live {{PERSONAL_DOMAIN}} website palette, extracted via Playwright screenshot. All images must feel like they belong on {{PERSONAL_DOMAIN}}.
 
 ### Color Palette
-- **Base**: Deep purple (#1a0533) to midnight blue (#0a0a2e) gradient
-- **Primary accent**: Muted gold (#C9A94C)
-- **Secondary accent**: Lavender (#B8A9E8)
-- **Text**: Soft white (#F0F0F0), clean sans-serif
+- **Background**: Dark navy-charcoal (#0f172a / #1e293b range) — solid or subtle gradient
+- **Primary accent**: Blue (#3b82f6 / #60a5fa range) — buttons, highlights, key numbers
+- **Gradient accent**: Blue → purple → pink gradient — used for emphasis bars, borders, badges
+- **Secondary accent**: Slate/cool gray (#94a3b8) — secondary text, dividers
+- **Text**: White (#f8fafc) for headlines, light gray (#cbd5e1) for body text
+- Clean sans-serif typography throughout
 
 ### Typography
 - Clean, bold sans-serif (Inter/Geist aesthetic)
-- White headlines, gold accents for key words/numbers
-- Lavender for secondary text
+- White headlines, blue accents for key words/numbers
+- Light gray for secondary/body text
 - Large but elegant — readable as thumbnail, not shouty
 
 ### Effects
-- Subtle geometric wireframe overlays (thin gold lines: hexagonal grids, node networks, circuit-inspired paths)
-- Wireframe patterns fade softly at edges
-- Abstract geometric shapes — hexagons, interconnected nodes, circuit-board patterns
-- Suggests AI/connectivity without being literal
+- Subtle gradient accent bars or borders (blue → purple → pink)
+- Clean card-style layouts with slight depth/shadow
+- Minimal decorative elements — content-first design
+- Professional infographic look — data visualization, clean sections, clear hierarchy
 
-### NEVER Use (Retired 2026-05-04)
+### NEVER Use
 - Neon glow, neon colors, neon accents of any kind
+- Cyberpunk or sci-fi aesthetic
+- Geometric abstract wireframes, hexagonal grids, circuit-board patterns (RETIRED 2026-05-15)
+- Deep purple (#1a0533) backgrounds (OLD palette — retired)
+- Gold/lavender color scheme (OLD palette — retired)
 - True black backgrounds
-- Movie-poster drama or cyberpunk aesthetic
-- Dramatic split/shatter/crack effects
+- Movie-poster drama or dramatic split/shatter effects
 - Particle/ember/spark effects
 
 ## API Call Pattern
@@ -71,77 +78,78 @@ with open("post_image.png", "wb") as f:
 ### Default: Infographic Card (use for most posts)
 
 ```
-Create a premium, elegant LinkedIn infographic with geometric abstract design.
+Create a premium, professional LinkedIn infographic with the {{PERSONAL_DOMAIN}} brand aesthetic.
 
-BACKGROUND: Deep purple (#1a0533) to midnight blue gradient. Overlaid with subtle geometric wireframe patterns — thin gold (#C9A94C) lines forming [hexagonal grid / node network / circuit paths], fading softly at edges.
+BACKGROUND: Dark navy-charcoal (#0f172a) solid background. Clean and minimal.
 
-HEADER: '[POST TITLE / MAIN CLAIM]' in bold clean white sans-serif. Subtitle: '[ONE-LINE CONTEXT]' in lighter lavender (#B8A9E8) below.
+HEADER: '[POST TITLE / MAIN CLAIM]' in bold clean white (#f8fafc) sans-serif. Subtitle: '[ONE-LINE CONTEXT]' in light gray (#cbd5e1) below. A thin blue→purple→pink gradient accent bar under the header.
 
 BODY: [Adapt based on content — use one of these layouts:]
-- **List layout**: Items with small geometric icons (abstract shapes in gold/lavender outline) + clean white labels
-- **Stats layout**: Key numbers in large gold text with white labels below
-- **Comparison layout**: Two sections separated by a thin gold line, each with its own geometric accent shape
-- **Timeline layout**: Connected nodes in gold along a thin line with event labels
+- **List layout**: Items with small blue (#3b82f6) bullet icons + clean white labels
+- **Stats layout**: Key numbers in large blue (#60a5fa) text with white labels below
+- **Comparison layout**: Two card sections with subtle borders, separated cleanly
+- **Timeline layout**: Connected dots in blue along a thin line with event labels
 
-BOTTOM: '@{{GITHUB_USERNAME}}' in small gold text, bottom-right.
+BOTTOM: '@{{GITHUB_USERNAME}}' in small light gray text, bottom-right.
 
-DESIGN: Deep purple gradient background, muted gold + lavender + white palette. Thin geometric wireframe overlays. Clean sans-serif typography. Elegant, premium, future-forward. Think Stripe meets AI conference keynote. NO neon, NO glow, NO black backgrounds. Square 1024x1024. Solid gradient background (NOT transparent).
+DESIGN: Dark navy-charcoal background, blue + white + gray palette. Blue→purple→pink gradient accents on key elements (borders, bars, badges). Clean sans-serif typography. Professional, modern, authoritative. NO neon, NO glow, NO cyberpunk, NO geometric wireframes. Square 1024x1024. Solid background (NOT transparent).
 ```
 
 ### Comparison Infographic
 
 ```
-Create a premium LinkedIn infographic comparing [THING A] vs [THING B] with geometric abstract design.
+Create a premium LinkedIn infographic comparing [THING A] vs [THING B] with {{PERSONAL_DOMAIN}} brand aesthetic.
 
-BACKGROUND: Deep purple (#1a0533) to midnight blue gradient. Thin gold wireframe grid fading at edges.
+BACKGROUND: Dark navy-charcoal (#0f172a) solid background.
 
-LAYOUT: Vertical split — thin gold line down center. Left side has a lavender geometric accent shape, right side has a gold geometric accent shape.
-LEFT: '[THING A]' label + 3-4 attributes in muted lavender text
-RIGHT: '[THING B]' label + 3-4 attributes in bright white text
+LAYOUT: Vertical split — thin gradient bar (blue→purple→pink) down center. Clean card-style sections on each side.
+LEFT: '[THING A]' label in blue (#3b82f6) + 3-4 attributes in light gray (#cbd5e1)
+RIGHT: '[THING B]' label in white + 3-4 attributes in white text
 
 HEADER: Bold white headline spanning full width above the split.
-BOTTOM: Verdict/conclusion in gold text. '@{{GITHUB_USERNAME}}' bottom-right.
+BOTTOM: Verdict/conclusion in blue text. '@{{GITHUB_USERNAME}}' bottom-right.
 
-DESIGN: Elegant contrast, NOT dramatic splits or cracks. Sophisticated comparison. Deep purple gradient, gold/lavender/white palette. Square 1024x1024. Solid gradient background (NOT transparent).
+DESIGN: Clean contrast, professional comparison layout. Dark navy-charcoal background, blue + white + gray palette. Blue→purple→pink gradient accent on divider. Square 1024x1024. Solid background (NOT transparent).
 ```
 
 ### Numbered Tips/Tools
 
 ```
-Create a premium LinkedIn infographic listing [NUMBER] key [tips/tools/insights] with geometric abstract design.
+Create a premium LinkedIn infographic listing [NUMBER] key [tips/tools/insights] with {{PERSONAL_DOMAIN}} brand aesthetic.
 
-BACKGROUND: Deep purple (#1a0533) to midnight blue gradient. Subtle hexagonal wireframe in gold, fading at edges.
+BACKGROUND: Dark navy-charcoal (#0f172a) solid background.
 
-HEADER: '[LIST TITLE]' in bold clean white sans-serif.
-BODY: Each item has a small gold geometric number accent + bold white name + one-line description in lavender.
-BOTTOM: Key takeaway in gold text. '@{{GITHUB_USERNAME}}' bottom-right.
+HEADER: '[LIST TITLE]' in bold clean white sans-serif. Blue→purple→pink gradient accent bar below.
+BODY: Each item has a blue (#3b82f6) number + bold white name + one-line description in light gray (#cbd5e1).
+BOTTOM: Key takeaway in blue text. '@{{GITHUB_USERNAME}}' bottom-right.
 
-DESIGN: Deep purple gradient, muted gold + lavender + white. Clean sans-serif typography. Elegant and organized. Square 1024x1024. Solid gradient background (NOT transparent).
+DESIGN: Dark navy-charcoal background, blue + white + gray palette. Clean sans-serif typography. Professional and organized. Square 1024x1024. Solid background (NOT transparent).
 ```
 
 ### Breaking News
 
 ```
-Create a premium LinkedIn infographic announcing [NEWS TOPIC] with geometric abstract design.
+Create a premium LinkedIn infographic announcing [NEWS TOPIC] with {{PERSONAL_DOMAIN}} brand aesthetic.
 
-BACKGROUND: Deep purple (#1a0533) to midnight blue gradient. Subtle hexagonal wireframe in gold, denser at top, fading downward.
+BACKGROUND: Dark navy-charcoal (#0f172a) solid background.
 
-HEADER: '[WHAT HAPPENED]' in bold large white sans-serif. A small elegant gold diamond or hexagon badge above the headline suggests importance (NOT a red alert — keep it premium).
-BODY: 3-4 key facts in clean white text. One highlighted stat as a larger gold number. Thin gold separator lines between sections.
-BOTTOM: 'What this means →' section with key takeaway in lavender text. '@{{GITHUB_USERNAME}}' in gold, bottom-right.
+HEADER: '[WHAT HAPPENED]' in bold large white sans-serif. A small blue→purple→pink gradient badge above the headline suggests importance (NOT a red alert — keep it professional).
+BODY: 3-4 key facts in clean white text. One highlighted stat as a larger blue (#60a5fa) number. Thin gray separator lines between sections.
+BOTTOM: 'What this means →' section with key takeaway in light gray text. '@{{GITHUB_USERNAME}}' bottom-right.
 
-DESIGN: Elegant urgency — sophisticated, NOT alarming. Deep purple gradient, gold wireframes, clean typography. Square 1024x1024. Solid gradient background (NOT transparent).
+DESIGN: Professional urgency — authoritative, NOT alarming. Dark navy-charcoal background, blue accents, clean typography. Square 1024x1024. Solid background (NOT transparent).
 ```
 
 ## Image Prompt Engineering Rules
 
 - Be specific about layout, colors, and content
-- Always specify "deep purple to midnight blue gradient background" explicitly
-- Always end with "Square 1024x1024. Solid gradient background (NOT transparent)."
+- Always specify "dark navy-charcoal (#0f172a) background" explicitly
+- Always end with "Square 1024x1024. Solid background (NOT transparent)."
 - Include the actual text/numbers you want in the image
-- Specify '@{{GITHUB_USERNAME}}' in small gold text, bottom-right corner
+- Specify '@{{GITHUB_USERNAME}}' in small light gray text, bottom-right corner
 - If the image has a comparison, specify what goes on each side
-- NO neon, NO glow, NO black backgrounds — always use the Geometric Abstract design system
+- NO neon, NO glow, NO cyberpunk, NO geometric wireframes — always use the {{PERSONAL_DOMAIN}} brand palette
+- Use blue→purple→pink gradient for accent elements (bars, borders, badges) — NOT as the background
 
 ## Upload Workflow
 

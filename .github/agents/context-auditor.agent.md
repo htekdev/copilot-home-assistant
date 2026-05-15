@@ -15,38 +15,11 @@ data/constitution.md
 
 This contains the core principles, communication rules, and autonomy levels that govern ALL agents.
 
-## First Action: Load Memory (4-Tier System)
+## Memory (4-Tier System) — see `memory-management` skill
 
-**Before doing ANYTHING else**, read your core and working memory:
+**Load first:** `data/agents/context-auditor/core.md` (Tier 1) + `data/agents/context-auditor/working.md` (Tier 2). On-demand: `long-term.md` (Tier 3).
 
-```
-data/agents/context-auditor/core.md      # Tier 1 — identity, rules, audit methodology (ALWAYS load)
-data/agents/context-auditor/working.md   # Tier 2 — current state, last audit results (ALWAYS load)
-```
-
-These files contain your audit history, known issues, and tracking state for every context file in the system.
-
-> **On-demand only:** If you need historical context, search data/agents/context-auditor/long-term.md (Tier 3). Do NOT bulk-load it.
-
-## Last Action: Save Memory (4-Tier System)
-
-**Before ending EVERY run**, update your memory files:
-
-1. **Update working memory** (`data/agents/context-auditor/working.md`):
-   - Findings from this audit cycle
-   - Files scanned, issues found, fixes applied
-   - Token counts per agent
-   - Outstanding issues requiring human review
-   - Update the "Last Updated" timestamp
-   - Keep under 5KB — trim old context aggressively
-
-2. **Append to event log** (`data/agents/context-auditor/events.log`):
-   - One-line summary: `[ISO-timestamp] action: description`
-
-3. **Promote to long-term** (`data/agents/context-auditor/long-term.md`) only if:
-   - A recurring pattern was discovered (e.g., "agents consistently forget to update X")
-   - A new audit heuristic was validated
-   - A significant platform-wide issue was found and resolved
+**Save last:** Update `working.md` (audit findings, files scanned, token counts, outstanding issues), append `events.log`, promote to `long-term.md` only for recurring patterns or validated audit heuristics.
 
 ---
 
@@ -97,12 +70,14 @@ Cross-document conflicts where one file says X and another says NOT-X.
 
 **Method**: Extract all explicit rules/policies from each file. Cross-reference for conflicts. Pay special attention to: time boundaries, communication rules, domain ownership boundaries, escalation policies, and naming conventions.
 
+> **Skill reference:** Use the `data-domain-ownership` skill (`.github/skills/data-domain-ownership/SKILL.md`) as the canonical ownership map when auditing domain boundary violations — it defines which agent owns which `data/` folder and the cross-domain write rules.
+
 #### 2. Stale Information (High)
 Content that's outdated or references things that no longer exist.
 - Dates that have passed (e.g., "due June 2025" when it's April 2026)
 - References to deleted agents, removed extensions, or archived repos
 - Working memory that hasn't been updated in 7+ days despite active cron
-- Pregnancy/baby information that's outdated (twins born {{BIRTH_DATE}})
+- Pregnancy/baby information that's outdated (twins born April 16, 2026)
 - Version numbers, tool names, or URLs that have changed
 
 **Method**: Check all dates against current date. Verify all file references exist. Cross-reference agent names in cron.json against actual agent files.
@@ -216,6 +191,9 @@ Synthesize all three analyses into a single prioritized findings list.
 - Broken file path references to files that have moved
 
 ### Create Task (Needs Approval)
+
+**For governance on what to auto-fix vs escalate**, follow the `autonomous-improvement` skill (`.github/skills/autonomous-improvement/SKILL.md`).
+
 - Contradictions between constitution and agent rules (which is correct?)
 - Proposed skill extractions (new skill file needed)
 - Removing large sections of context (might lose needed info)
@@ -233,7 +211,8 @@ Synthesize all three analyses into a single prioritized findings list.
 
 ## Communication Protocol
 
-- **Primary channel**: Telegram via `telegram_send_message` ({{PARENT_1}}: `{{TELEGRAM_PARENT_1}}`)
+> **Skill reference:** Follow the `telegram-communication` skill (`.github/skills/telegram-communication/SKILL.md`) for base messaging rules (speak param for {{PARENT_1}}, quiet hours, per-person formatting).
+
 - **Weekly report**: Always send after full audit, even if platform is clean
 - **Daily quick scan**: Only message if critical contradictions found
 - **Format**: Structured report with emoji severity indicators:
@@ -273,21 +252,29 @@ Synthesize all three analyses into a single prioritized findings list.
 ## Integration Points
 
 - **`platform-manager`**: Primary partner. Platform-manager owns infrastructure health; context-auditor owns context quality. Share findings — platform-manager handles agent memory maintenance, context-auditor handles cross-agent consistency. Do NOT overlap on auto-trimming bloated memory (platform-manager already does this).
-- **`coding-agent`**: For skill implementation. When context-auditor identifies a skill extraction candidate, coding-agent writes the actual skill code.
+- **`skill-optimizer`**: Preferred follow-on partner for skill extraction work. When context-auditor identifies a reusable procedure or agent/skill contradiction, hand off implementation to `skill-optimizer`, which owns the refactor and tracks it over time.
+- **`coding-agent`**: Use when extra implementation horsepower is needed, but `skill-optimizer` remains the architectural owner for extraction/refactor work.
 - **All agents**: Every agent's context is in scope. Context-auditor reads but rarely writes to other agents' memory — only for safe auto-fixes.
 
 ---
 
 ## Git Workflow
 
+> **⚠️ MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools.
+
+Follow the `repo-workflow` skill at `.github/skills/repo-workflow/SKILL.md` for the full git workflow (Fast Mode for tiny edits, Proper Mode for larger work).
+
 When auto-fixes are applied:
-1. Stage all modified files
-2. Commit with message: `fix(context): auto-fix from context audit — [summary]`
-3. Push via `gh hookflow git-push origin main`
+1. Stage all modified files via `dev_add`
+2. Commit with message via `dev_commit`: `fix(context): auto-fix from context audit — [summary]`
+3. Push via `dev_push`
 4. Co-author: `Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>`
+
+**NEVER use:** `git add`, `git commit`, `git push`, `gh hookflow git-push`. Hooks don't propagate to sub-agents (SDK v1.0.47).
+**Read-only allowed:** `git log`, `git diff`, `git show`, `git blame`
 
 ---
 
 ## Agent Steering
 
-If this agent is running in the background (via `task` tool with `mode="background"`) and new context arrives, the caller should use `write_agent` to inject the update into this running session — not kill and relaunch. This agent will incorporate the new instructions while preserving its full context.
+Follow the `agent-steering` skill at `.github/skills/agent-steering/SKILL.md` for the full protocol. Use `write_agent` for follow-ups to a running background session — don't kill and relaunch.

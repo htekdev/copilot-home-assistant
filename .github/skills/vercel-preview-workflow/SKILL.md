@@ -17,8 +17,8 @@ description: >
 | Repo | Site | Domain |
 |------|------|--------|
 | `{{GITHUB_USERNAME}}/personal-site` | {{PERSONAL_DOMAIN}} | {{PERSONAL_DOMAIN}} |
-| `{{GITHUB_USERNAME}}/client-site-a` | Client Site A | client-site-a.example.com |
-| `{{GITHUB_USERNAME}}/client-site-b` | Client Site B | client-site-b.example.com |
+| `{{GITHUB_USERNAME}}/client-site-template-b` | Client Site B | {{CLIENT_SITE_B_DOMAIN}} |
+| `{{GITHUB_USERNAME}}/client-site-template-a` | Client Site A | {{CLIENT_SITE_A_DOMAIN}} |
 
 > If you're unsure whether a repo is Vercel-connected, check for a `vercel.json` or Vercel integration in the repo settings.
 
@@ -55,7 +55,7 @@ npm run build
 
 # Commit and push
 git add -A
-git commit -m "feat: {description}" --trailer "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
+git commit -m "feat: {description}" --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>"
 git push origin $branch
 ```
 
@@ -70,16 +70,24 @@ Write-Output "PR created: $prUrl"
 
 ### Step 3 — Wait for Vercel Preview URL
 
-Vercel's {{EMPLOYER_PARENT}} integration posts a comment on the PR with the preview URL. This typically takes 30-120 seconds after the PR is created.
+Vercel's GitHub integration posts a comment on the PR with the preview URL. This typically takes 30-120 seconds after the PR is created.
 
-**Polling method — use `gh api`:**
+**Preferred method — use `create_vercel_pr` or `dev_push` (auto-polls):**
+
+Both `create_vercel_pr` and `dev_push` (on Vercel-connected repos) **auto-poll** for the Vercel preview URL and return it in their JSON response as `vercel_preview_url`. No manual polling needed in most cases.
+
+- `create_vercel_pr` → returns `vercel_preview_url` after creating branch + PR + polling
+- `dev_push` → on Vercel repos, auto-detects PR and polls for preview URL
+
+If the tool returns `"vercel_preview_url": "timeout"`, the build may still be running — fall back to manual polling below.
+
+**Manual fallback — use `gh api`:**
 
 ```powershell
 $owner = "{{GITHUB_USERNAME}}"
 $repo = "{repo-name}"
-$prNumber = "{pr-number}"  # extract from PR creation output
+$prNumber = "{pr-number}"
 
-# Poll for Vercel bot comment (retry up to 10 times, 15s apart)
 $maxAttempts = 10
 $attempt = 0
 $previewUrl = $null
@@ -87,55 +95,16 @@ $previewUrl = $null
 while ($attempt -lt $maxAttempts -and -not $previewUrl) {
     $attempt++
     Start-Sleep -Seconds 15
-
     $comments = gh api "repos/$owner/$repo/issues/$prNumber/comments" --jq '.[].body' 2>$null
-
-    # Vercel bot comments contain the preview URL
-    # Look for deployment URL patterns
     if ($comments) {
-        # Match Vercel preview URL pattern
         $match = [regex]::Match($comments, 'https://[a-zA-Z0-9-]+\.vercel\.app')
-        if ($match.Success) {
-            $previewUrl = $match.Value
-        }
-
-        # Also check for custom preview domain patterns
-        if (-not $previewUrl) {
-            $match = [regex]::Match($comments, '\*\*Preview\*\*:?\s*(https://[^\s\)]+)')
-            if ($match.Success) {
-                $previewUrl = $match.Groups[1].Value
-            }
-        }
-
-        # Check for Vercel deployment comment with inspect URL
-        if (-not $previewUrl) {
-            $match = [regex]::Match($comments, '(https://[a-zA-Z0-9-]+--[a-zA-Z0-9-]+\.vercel\.app)')
-            if ($match.Success) {
-                $previewUrl = $match.Value
-            }
-        }
+        if ($match.Success) { $previewUrl = $match.Value }
     }
-
-    if (-not $previewUrl) {
-        Write-Output "Attempt $attempt/$maxAttempts - Vercel preview not ready yet..."
-    }
-}
-
-if ($previewUrl) {
-    Write-Output "✅ Preview URL: $previewUrl"
-} else {
-    Write-Output "⚠️ Could not find preview URL after $maxAttempts attempts"
+    if (-not $previewUrl) { Write-Output "Attempt $attempt/$maxAttempts - preview not ready..." }
 }
 ```
 
-**Alternative — use `gh pr view` with comments:**
-
-```powershell
-$prComments = gh pr view $prNumber --repo "{{GITHUB_USERNAME}}/$repo" --json comments --jq '.comments[].body'
-# Parse for Vercel URL as above
-```
-
-**Fallback if polling fails:**
+**Other fallbacks if polling fails:**
 - Check the Vercel dashboard directly
 - The preview URL pattern is typically: `https://{repo}-{hash}-{team}.vercel.app`
 - Or check the PR's deployment status: `gh api repos/$owner/$repo/deployments`
@@ -162,7 +131,7 @@ telegram_send_message(
 
 Do NOT merge until {{PARENT_1}} explicitly approves. Acceptable approval signals:
 - "merge it", "looks good", "LGTM", "ship it", "approved", "go ahead", "merge"
-- A {{EMPLOYER_PARENT}} PR approval
+- A GitHub PR approval
 
 ### Step 6 — Merge PR
 
@@ -184,7 +153,7 @@ Then update your working memory with the deployment.
 - If build is still running, increase wait time
 
 ### Preview URL not found in comments
-Some repos use the Vercel {{EMPLOYER_PARENT}} App which posts as a deployment status rather than a comment:
+Some repos use the Vercel GitHub App which posts as a deployment status rather than a comment:
 ```powershell
 # Check deployment statuses
 gh api "repos/$owner/$repo/pulls/$prNumber" --jq '.head.sha' | ForEach-Object {

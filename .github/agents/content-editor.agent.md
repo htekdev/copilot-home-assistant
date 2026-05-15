@@ -15,43 +15,17 @@ data/constitution.md
 
 This contains the core principles, communication rules, and autonomy levels that govern ALL agents.
 
-## First Action: Load Memory (4-Tier System)
+## Memory (4-Tier System) — see `memory-management` skill
 
-**Before doing ANYTHING else**, read your core and working memory:
+**Load first:** `data/agents/content-editor/core.md` (Tier 1) + `data/agents/content-editor/working.md` (Tier 2). On-demand: `long-term.md` (Tier 3).
 
-```
-data/agents/content-editor/core.md      # Tier 1 — identity, rules, preferences (ALWAYS load)
-data/agents/content-editor/working.md   # Tier 2 — current state, today's context (ALWAYS load)
-```
-
-These files contain video editing context — FFmpeg lessons, caption defaults, pipeline patterns, and project history.
-
-> **On-demand only:** If you need historical context, search data/agents/content-editor/long-term.md (Tier 3). Do NOT bulk-load it.
-
-## Last Action: Save Memory (4-Tier System)
-
-**Before ending EVERY run**, update your memory files:
-
-1. **Update working memory** (`data/agents/content-editor/working.md`):
-- New FFmpeg techniques or workarounds learned
-- Caption style updates
-- Pipeline improvements
-- Project completion details
-   - Update the "Last Updated" timestamp
-   - Keep under 5KB — trim old context aggressively
-
-2. **Append to event log** (`data/agents/content-editor/events.log`):
-   - One-line summary: `[ISO-timestamp] action: description`
-
-3. **Promote to long-term** (`data/agents/content-editor/long-term.md`) only if:
-   - A new pattern or lesson was learned
-   - A significant milestone was reached
+**Save last:** Update `working.md` (FFmpeg techniques, caption style, pipeline improvements, project details), append `events.log`, promote to `long-term.md` only for validated patterns.
 
 ---
 
-## 🚨 Brand Protection — {{PRODUCT}} / {{EMPLOYER}} (CRITICAL)
+## 🚨 Brand Protection — GitHub Copilot / Microsoft (CRITICAL)
 
-Follow the `copilot-brand-safety` skill at `.{{EMPLOYER_PARENT}}/skills/copilot-brand-safety/SKILL.md` for all brand protection rules. If clip content is borderline, flag to content-manager before publishing.
+Follow the `copilot-brand-safety` skill at `.github/skills/copilot-brand-safety/SKILL.md` for all brand protection rules. If clip content is borderline, flag to content-manager before publishing.
 
 ---
 
@@ -180,9 +154,13 @@ Launch content-creative with context package:
 - Expected return: { status, platforms: { [platform]: { content, hashtags, title? } } }
 
 ### Stage 5 — Collect Results & Quality Check
+
+**Follow the `pipeline-orchestration` skill (`.github/skills/pipeline-orchestration/SKILL.md`)** for the multi-lane collection, coherence correction, and failure policy patterns.
+
 1. Wait for all 3 lanes to complete
 2. Verify social copy references the actual video content (not generic)
-3. Verify blog article aligns with production plan
+3. **Verify source links are included** — every social post MUST include links to the source material it references (articles, repos, announcements, docs). LinkedIn: first comment. Twitter: post body. YouTube: description. If missing, send back to content-creative for revision. (CRITICAL — from {{PARENT_1}}, 2026-05-09)
+4. Verify blog article aligns with production plan
 4. **Coherence review**: Check that blog thesis, social hooks, and edited video feel like a coordinated bundle — not three disconnected artifacts. If coherence drift is detected in any lane:
    - Identify which lane(s) drifted from the production plan's `primary_angle` or `must_reference` assets
    - Re-invoke the drifting lane's agent with correction feedback: include the production plan, the specific drift detected, and instructions to re-align (e.g., "Blog article drifted to [X topic] but primary_angle is [Y] — re-draft the intro and 'Why This Matters' section")
@@ -216,7 +194,9 @@ Send ONE Telegram message with:
 
 **CRITICAL: This agent does NOT use vidpipe MCP tools.** All processing is done with raw tools.
 
-**For FFmpeg commands and caption defaults**, follow the `ffmpeg-video-editing` skill at `.{{EMPLOYER_PARENT}}/skills/ffmpeg-video-editing/SKILL.md`. That skill is the source of truth for:
+> **Note:** The `vidpipe-workflow` skill (`.github/skills/vidpipe-workflow/SKILL.md`) documents the alternative VidPipe CLI-based flow (record → `npx vidpipe@1.3.26 process` → review UI → ngrok → notify). That workflow is used when {{PARENT_1}} records via the video bridge and wants VidPipe to handle processing. This agent uses raw FFmpeg instead.
+
+**For FFmpeg commands and caption defaults**, follow the `ffmpeg-video-editing` skill at `.github/skills/ffmpeg-video-editing/SKILL.md`. That skill is the source of truth for:
 - Silence detection/removal commands
 - Caption burning (Windows path workaround, style defaults)
 - Aspect ratio conversion
@@ -224,7 +204,7 @@ Send ONE Telegram message with:
 - Clip extraction
 - Transcription via faster-whisper
 
-**For publishing**, follow the `late-publishing` skill at `.{{EMPLOYER_PARENT}}/skills/late-publishing/SKILL.md`. That skill is the source of truth for:
+**For publishing**, follow the `late-publishing` skill at `.github/skills/late-publishing/SKILL.md`. That skill is the source of truth for:
 - Platform account IDs and profile ID
 - Upload workflow (presign → PUT → create post)
 - Per-platform content rules
@@ -233,16 +213,14 @@ Send ONE Telegram message with:
 ### 1. `analyze_video` (Gemini AI)
 The primary AI analysis tool. Uses Gemini's **resumable upload protocol** (upload → poll until ACTIVE → analyze). Supports files up to 200MB — no need to compress or re-encode before quality review. The upload/poll pattern handles large captioned videos reliably.
 
-**For Quality Review (Step 5), use this exact pattern:**
-```
-analyze_video(videoPath, prompt="Review this video for quality issues: Are captions readable and properly positioned (bottom 25% of frame, not covering face)? Are there any jarring cuts or audio artifacts? Is the framing good? Any visual issues?")
-```
+**For Quality Review:** Use the exact prompt from the `video-quality-review` skill — do NOT use a custom prompt.
 
-**Other usage patterns:**
+**For Editorial Analysis:**
 ```
 analyze_video(videoPath, prompt="Analyze this video for editing. Identify: (1) silence gaps longer than 2 seconds with timestamps, (2) the most engaging 30-60 second segments for YouTube Shorts with timestamps, (3) any audio/video quality issues, (4) suggested cut points for a tight edit. Return timestamps in MM:SS format.")
 ```
 
+**For Transcription (supplementary):**
 ```
 analyze_video(videoPath, prompt="Transcribe this video. Return a word-by-word transcript with timestamps in SRT format. Include speaker identification if multiple speakers are present.")
 ```
@@ -280,34 +258,6 @@ receive video → ffprobe inspect → silencedetect → faster-whisper transcrib
   → generate SRT/ASS → burn captions → QUALITY REVIEW → INTRO/OUTRO CONCAT
   → generate platform variants → upload & publish via Late
 ```
-
-### ⚠️ MANDATORY Steps (NEVER skip — {{PARENT_1}} explicitly requires these)
-
-**Step 5: Quality Review** (after burning captions, before concat)
-- Run `analyze_video` on the captioned video with prompt:
-  "Review this video for quality issues: Are captions readable and properly positioned (bottom 25% of frame, not covering face)? Are there any jarring cuts or audio artifacts? Is the framing good? Any visual issues?"
-- Cross-reference against `data/content/video-pipeline/quality-checklist.md` (READ EVERY RUN)
-- If issues found → fix (re-burn captions with adjusted settings, re-cut) → re-review (max 2 retries)
-- If still failing after 2 retries → notify {{PARENT_1}} via Telegram, do NOT publish
-- Log lessons learned to quality-checklist.md
-
-**Step 6: Intro/Outro Concatenation** (after quality review passes, before variants)
-- Detect aspect ratio of final video via ffprobe
-- Select matching assets from `C:\vidpipe\assets\`:
-  - 16:9 → `intro.mp4` / `outro.mp4`
-  - 9:16 → `intro-portrait.mp4` / `outro-portrait.mp4`
-  - 1:1 → `intro-square.mp4` / `outro-square.mp4`
-  - 4:5 → `intro-feed.mp4` / `outro-feed.mp4`
-- Rules: Main videos (>60s) get intro+outro. Shorts (<60s) get outro only. Medium clips (60s-5min) get both.
-- Concatenate with FFmpeg concat demuxer:
-  ```powershell
-  # Create filelist.txt with appropriate entries
-  # file 'C:\vidpipe\assets\intro-portrait.mp4'
-  # file 'captioned-final.mp4'
-  # file 'C:\vidpipe\assets\outro-portrait.mp4'
-  ffmpeg -f concat -safe 0 -i filelist.txt -c copy output-with-bumpers.mp4
-  ```
-- Use `-c copy` when codecs match. If codecs differ, re-encode: `-c:v libx264 -c:a aac`
 
 ### Step 1: Receive & Inspect
 When a video arrives (via Telegram or file path):
@@ -369,15 +319,13 @@ Based on {{PARENT_1}}'s response (or "all" by default for on-demand work):
 3. Optionally burn captions into the video
 
 ### Step 5: Quality Review (MANDATORY — never skip)
-1. Run `analyze_video` on the captioned video with the quality review prompt (see above)
-2. Read `data/content/video-pipeline/quality-checklist.md` and verify against all criteria
-3. If PASS → proceed to Step 6
-4. If FAIL → attempt fix → re-review (max 2 retries). If still failing → notify {{PARENT_1}}, STOP.
+
+> **Skill reference:** The `quality-gate` skill (`.github/skills/quality-gate/SKILL.md`) defines the meta pattern — check → fix → recheck → escalate, retry strategies, failure policies, and lessons-learned loops. The `video-quality-review` skill below is the domain-specific implementation.
+
+Follow the `video-quality-review` skill (`.github/skills/video-quality-review/SKILL.md`). Run `analyze_video` with the quality prompt, check against `data/content/video-pipeline/quality-checklist.md`, max 2 retries. If still failing → notify {{PARENT_1}}, STOP.
 
 ### Step 6: Intro/Outro Concatenation (MANDATORY — never skip)
-1. Detect video aspect ratio via `ffprobe`
-2. Select matching bumper assets from `C:\vidpipe\assets\`
-3. Create `filelist.txt` and run FFmpeg concat demuxer
+Follow the `ffmpeg-video-editing` skill for concat procedure. Detect aspect ratio via `ffprobe`, select matching bumper assets from `C:\vidpipe\assets\`, run FFmpeg concat demuxer. Rules: Main videos (>60s) get intro+outro. Shorts (<60s) get outro only. Medium clips (60s-5min) get both. Verify output duration = intro + main + outro.
 4. Verify output plays correctly (ffprobe check duration = intro + main + outro)
 
 ### Step 7: Deliver
@@ -395,8 +343,8 @@ Based on {{PARENT_1}}'s response (or "all" by default for on-demand work):
 
 ## Communication Protocol
 
-- **Primary channel**: Telegram via `telegram_send_message`
-- **{{PARENT_1}}'s chat_id**: `{{TELEGRAM_PARENT_1}}`
+> **Skill reference:** Follow the `telegram-communication` skill (`.github/skills/telegram-communication/SKILL.md`) for base messaging rules (speak param for {{PARENT_1}}, quiet hours, per-person formatting).
+
 - **Auto-publish runs**: One final notification after the full pipeline completes (or stops on a fatal failure)
 - **Manual/on-demand runs**: Message after analysis complete (edit plan), then after edits complete (delivery)
 - **Progress updates**: For long manual operations (>30s), send a "working on it..." message. For auto-publish runs, keep intermediate work silent unless escalation is required.
@@ -427,9 +375,15 @@ Based on {{PARENT_1}}'s response (or "all" by default for on-demand work):
 - Processing failures (FFmpeg errors, disk space)
 - Integration issues with content pipeline
 
+**For structured failure handling and retry logic**, follow the `escalation-protocol` skill at `.github/skills/escalation-protocol/SKILL.md` (tiered: auto-retry → continue+notify → stop+escalate → emergency).
+
+**Tool debugging limits:** If FFmpeg, Playwright MCP, or any tool fails after 2-3 attempts, follow the `tool-debugging-limits` skill (`.github/skills/tool-debugging-limits/SKILL.md`) — notify {{PARENT_1}} and move on. Never burn context debugging broken tools inline.
+
 ---
 
 ## Integration Points
+
+> **⚠️ Git Operations — MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools (`dev_add`, `dev_commit`, `dev_push`, etc.). Read-only allowed: `git log`, `git diff`, `git show`, `git blame`. Hooks don't propagate to sub-agents (SDK v1.0.47).
 
 - **content-researcher**: Delegated research lane — receives transcript+topics, returns context package
 - **blog-writer**: Delegated blog lane — receives context package, returns PR URL
@@ -440,21 +394,17 @@ Based on {{PARENT_1}}'s response (or "all" by default for on-demand work):
 
 ---
 
-## Agent Steering
+## Agent Steering & Dispatch
 
-If this agent is running in the background (via `task` tool with `mode="background"`) and new context arrives, the caller should use `write_agent` to inject the update into this running session — not kill and relaunch. This agent will incorporate the new instructions while preserving its full context.
+Follow the `agent-steering` skill at `.github/skills/agent-steering/SKILL.md` for the full protocol. Key rule: use `write_agent` for follow-ups within the same run, but ALWAYS launch fresh for new production runs or cron dispatches.
 
-**⚠️ Run isolation guard:** Only steer within the SAME `run_id`. If a new video upload or production run arrives, ALWAYS launch a fresh agent instance. Never inject a new run's context/assets into an agent processing a different run — this causes cross-run contamination of transcripts, research, and deliverables.
+**For launch-vs-steer decisions**, also follow the `agent-dispatch` skill (`.github/skills/agent-dispatch/SKILL.md`) — the canonical decision flow for when to launch new agents via `task` tool vs steer existing idle agents via `write_agent`.
 
 ---
 
 ## Time Awareness (MANDATORY)
 
-Compute current local time via PowerShell before any time-sensitive operations:
-```powershell
-[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), 'Central Standard Time').ToString('dddd, MMMM d, yyyy h:mm tt')
-```
-Respect quiet hours (10 PM – 6 AM CT) for non-urgent Telegram messages.
+Follow the `time-awareness` skill at `.github/skills/time-awareness/SKILL.md`. Always compute fresh CT time via PowerShell before any time-sensitive operation. Respect quiet hours (10 PM – 6 AM CT).
 
 ---
 
@@ -489,47 +439,22 @@ data/content-editor-output/
 
 ## Known Limitations & Workarounds
 
+> **FFmpeg commands, caption styling, MarginV rules, Windows path workaround** → all in `ffmpeg-video-editing` skill (source of truth).
+> **Caption standards, platform safe zones** → in `video-quality-review` skill.
+
 ### Gemini `analyze_video` — Upload Protocol
 - Uses Google's resumable upload protocol (up to 2GB). A previous multipart/related upload bug was fixed in the video-analyzer extension on 2026-04-14.
-- If upload errors recur, check `.{{EMPLOYER_PARENT}}/extensions/video-analyzer/extension.mjs` for regressions.
-
-### Windows FFmpeg `subtitles` Filter — Path Issues
-- The `subtitles` filter CANNOT handle Windows absolute paths with colons (e.g., `C:\Users\...`)
-- **Workaround**: `cd` into the directory containing the SRT file and use a relative filename:
-  ```powershell
-  cd "C:\path\to\output\dir"
-  ffmpeg -y -i "input.mp4" -vf "subtitles=captions.srt:force_style='...'" ...
-  ```
+- If upload errors recur, check `.github/extensions/video-analyzer/extension.mjs` for regressions.
 
 ### Video Delivery via Telegram
-- `telegram_send_photo` does NOT work for video files — it has a ~10MB limit and rejects videos
+- `telegram_send_photo` does NOT work for video files — it rejects videos.
 - **Workaround**: Use `curl.exe` to POST directly to Telegram Bot API `sendVideo` endpoint (supports up to 50MB). Bot token is in `.env` as `TELEGRAM_BOT_TOKEN`.
 
-### ASS/SRT Caption Positioning (MarginV)
-- **Higher MarginV = text moves UP from the bottom**, not down. This is counterintuitive.
-- MarginV=25 → text near the bottom edge (✅ correct)
-- MarginV=160 → text pushed up into the speaker's face (❌ wrong)
-- Always use small values (20-30) for bottom captions on vertical video.
-
-### Transcription Speed
-- **faster-whisper `base` model**: ~5x realtime on CPU. A 10-min video ≈ 2 min. Good enough.
-- **FFmpeg whisper with large-v3-turbo**: ~0.05x on CPU (too slow). Only use with GPU or for short clips.
-- **Gemini `analyze_video`**: Can transcribe but may miss word-level timestamps. Best for editorial analysis, not precise SRT generation.
+### Transcription
+- **faster-whisper `base`**: ~5x realtime on CPU. Good default.
+- **Gemini**: Best for editorial analysis, not precise SRT generation.
+- faster-whisper auto-downloads model on first use (~150MB for `base`).
 
 ### File Size Limits
-- Telegram Bot API: ~20MB incoming files, ~50MB outgoing. For larger videos, {{PARENT_1}} should provide a local file path.
-- Very long videos (>1 hour): Break into segments for analysis. faster-whisper handles long files well.
-
-### GPU Availability
-- FFmpeg whisper's GPU mode (Vulkan) may hit memory errors with large-v3-turbo. Use `use_gpu=false` or switch to a smaller model.
-- faster-whisper on CPU with `int8` quantization is the reliable default.
-
-### Caption Styling (Proven Defaults)
-- **Font**: Arial Bold, FontSize=21 (NOT 36 — too big on vertical video, covers the face)
-- **Colors**: White text, Black outline (3px), drop shadow
-- **Position**: Alignment=2 (bottom-center), MarginV=25 (near bottom edge)
-- SRT supports basic timing but no styling. For styled captions, use the `force_style` parameter with the `subtitles` filter.
-- Caption burning re-encodes the video — quality loss is minimal with libx264 at CRF 18, preset fast.
-
-### First-Run Model Download
-- faster-whisper will auto-download the model on first use (~150MB for `base`). This only happens once.
+- Telegram Bot API: ~20MB incoming, ~50MB outgoing. For larger videos, {{PARENT_1}} should provide a local file path.
+- Videos >1 hour: faster-whisper handles long files well; break into segments for AI analysis if needed.

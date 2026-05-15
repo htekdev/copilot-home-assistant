@@ -4,7 +4,7 @@ description: >
   Client website domain agent lifecycle — shared development workflow, code quality,
   progress page maintenance, standup/check-in reporting, and diminishing returns
   detection for Astro + Tailwind + Vercel client sites. Use when building or
-  maintaining any client website domain agent (carplay, client-site-a, etc.).
+  maintaining any client website domain agent (client-site-template-a, client-site-template-b, etc.).
 ---
 
 # Client Site Lifecycle Skill
@@ -19,18 +19,20 @@ This skill captures the patterns shared across all client site agents. **Agent-s
 
 > **⚠️ MANDATORY:** All Vercel-connected client sites MUST use the `vercel-preview-workflow` skill (`.github/skills/vercel-preview-workflow/SKILL.md`) for deployment. **NEVER push directly to `main`** — main = production.
 
+> **⚠️ Git Operations — MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools. Hooks don't propagate to sub-agents (SDK v1.0.47).
+
 Client websites use a branch + PR workflow with Vercel preview review:
 
 1. **Load memory** → read `working.md` to understand current phase and next steps
-2. **Pull latest** → `git checkout main && git pull origin main`
-3. **Create branch** → `git checkout -b feat/{description}`
+2. **Pull latest** → `dev_checkout` to main, then `dev_pull`
+3. **Create branch** → `start_dev_branch` with name `feat/{description}`
 4. **Implement** → build the next feature/page in the repo
 5. **Test locally** → `npm run build` — verify zero errors before pushing
-6. **Push branch & create PR** → push to branch, create PR via `gh pr create`
+6. **Push branch & create PR** → `dev_push` to push branch, then `create_vercel_pr` to create PR
 7. **Wait for Vercel preview** → poll for Vercel bot comment with preview URL
 8. **Send preview URL to {{PARENT_1}}** → Telegram with `speak` param, include PR + preview URLs
 9. **Wait for approval** → {{PARENT_1}} reviews the live preview
-10. **Merge** → `gh pr merge --squash --delete-branch` after approval
+10. **Merge** → `dev_merge_pr` after approval
 11. **Update memory** → record progress in `working.md`, append `events.log`
 
 ### Rules

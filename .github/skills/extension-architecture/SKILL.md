@@ -9,7 +9,7 @@ description: >
 
 # Extension Architecture Skill
 
-How Copilot CLI extensions work in the home assistant platform. Reference this when building, modifying, or debugging extensions.
+How Copilot CLI extensions work in the {{FAMILY_NAME}} family platform. Reference this when building, modifying, or debugging extensions.
 
 ## File Structure
 
@@ -23,18 +23,25 @@ Every extension lives in `.github/extensions/{name}/extension.mjs`:
 ├── auto-commit/extension.mjs         # Git auto-save on file changes
 ├── budget-tracker/extension.mjs      # Plaid financial connector tools
 ├── cron-scheduler/extension.mjs      # Cron job scheduler (reads cron.json)
+├── dev-workflow/extension.mjs        # Multi-repo dev with git worktrees
+├── exa/extension.mjs                 # Exa AI search & crawl tools
 ├── family-data/extension.mjs         # Family profiles, preferences
 ├── financial-connector/extension.mjs # Plaid API integration
 ├── google-maps/extension.mjs         # Drive time, directions, routes
 ├── google-services/extension.mjs     # Gmail, GCal, GTasks tools
 ├── home-maintenance/extension.mjs    # Maintenance schedule tools
+├── image-gen/extension.mjs           # OpenAI gpt-image-2 image generation
 ├── late-api/extension.mjs            # Late/Zernio social media API
+├── life-events/extension.mjs         # Family milestone tracking
 ├── locations/extension.mjs           # Saved places management
 ├── meal-planner/extension.mjs        # Meals, recipes, grocery lists
+├── perplexity/extension.mjs          # Perplexity AI research tools
 ├── self-restart/extension.mjs        # Session restart tool
 ├── shopping-list/extension.mjs       # Shopping list CRUD
 ├── tasker-bridge/extension.mjs       # Tasker TTS integration
 ├── telegram-bridge/extension.mjs     # Telegram messaging bridge
+├── twilio-sms/extension.mjs          # Twilio SMS messaging
+├── vercel-env/extension.mjs          # Vercel project & env management
 ├── video-analyzer/extension.mjs      # Gemini video analysis tool
 ├── video-bridge/extension.mjs        # Video recording upload bridge
 ```
@@ -203,6 +210,10 @@ function parseEnvFile(filePath) {
 - `PLAID_CLIENT_ID`, `PLAID_SECRET` — Financial connector
 - `OPENAI_API_KEY` — Image generation
 - `GEMINI_API_KEY` — Video analysis
+- `EXA_API_KEY` — Exa search extension
+- `PERPLEXITY_API_KEY` — Perplexity AI extension
+- `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` — Twilio SMS
+- `VERCEL_TOKEN` — Vercel project & env management
 
 ## Common Patterns
 
@@ -244,8 +255,8 @@ The `auto-commit` extension automatically commits and pushes changes:
 - **Debounce:** Max 1 commit per 30 seconds
 - **Polling fallback:** Every 5 minutes, catches sub-agent changes
 - **Commit message:** `Auto-save: {tool-name} (YYYY-MM-DD)`
-- **Push command:** `gh hookflow git-push origin main`
-- **Co-author:** Always includes `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
+- **Push command:** Uses `dev_push` tool internally (raw git/hookflow blocked by `dev-guard`)
+- **Co-author:** Always includes `Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>`
 
 **Implications for agents:**
 - No need to manually `git add/commit/push` for data changes
@@ -285,18 +296,26 @@ The `auto-commit` extension automatically commits and pushes changes:
 | `auto-commit` | Git auto-save | (hook only — no tools) |
 | `budget-tracker` | Plaid financial data | get_balances, get_transactions, get_spending_summary |
 | `cron-scheduler` | Scheduled job dispatch | cron_list_jobs, cron_next_run |
+| `dev-guard` | Blocks raw git/hookflow in powershell | (hook only — onPreToolUse interceptor) |
+| `dev-workflow` | ALL git operations as tools | start_dev_branch, create_vercel_pr, dev_status, dev_add, dev_commit, dev_push, dev_pull, dev_checkout, dev_stash, dev_reset, dev_rebase, dev_merge_pr |
+| `exa` | Exa AI search & crawl (sub-agent propagation) | exa_search, exa_search_advanced, exa_crawl, exa_code_context, exa_company_research, exa_people_search, exa_find_similar |
 | `family-data` | Family profiles | get_family_member, list_family, get_preferences |
 | `financial-connector` | Plaid sync | sync_accounts, get_recurring |
 | `google-maps` | Navigation | get_drive_time, get_directions, plan_route |
 | `google-services` | Gmail/GCal/GTasks | gmail_search, gcal_today, gcal_create_event |
 | `home-maintenance` | Maintenance scheduling | maintenance_due, log_maintenance, add_service_provider |
+| `image-gen` | OpenAI gpt-image-2 infographics | generate_image |
 | `late-api` | Social media scheduling | late_create_post, late_list_posts, late_presign_upload |
+| `life-events` | Family milestone tracking | add_life_event, list_life_events, get_life_event, update_life_event |
 | `locations` | Saved places | find_location, add_location |
 | `meal-planner` | Meals & recipes | set_meal, get_meal_plan, add_recipe |
+| `perplexity` | Perplexity AI research (sub-agent propagation) | perplexity_search, perplexity_reason, perplexity_deep_research |
 | `self-restart` | Session restart | restart_session |
 | `shopping-list` | Shopping CRUD | add_to_shopping_list, shopping_list, check_off_item |
 | `tasker-bridge` | Android Tasker TTS | tasker_status, tasker_start_tunnel |
 | `telegram-bridge` | Telegram messaging | telegram_send_message, telegram_send_photo |
+| `twilio-sms` | Twilio SMS messaging | send_sms |
+| `vercel-env` | Vercel project & env management | vercel_list_projects, vercel_list_env_vars, vercel_set_env_var, vercel_list_deployments, vercel_get_runtime_logs |
 | `video-analyzer` | Gemini video AI | analyze_video |
 | `video-bridge` | Video recording upload | video_bridge_status, video_bridge_start |
 
@@ -309,3 +328,13 @@ The `auto-commit` extension automatically commits and pushes changes:
 - ❌ Exposing secrets via tool return values
 - ❌ Creating tools with generic names ("do_thing") — be specific
 - ❌ Modifying extension.mjs and expecting hot-reload (requires restart)
+
+## ⚠️ CRITICAL LIMITATION: Hooks Do NOT Propagate to Sub-Agents
+
+**Sub-agents launched via the `task` tool do NOT inherit `hooks.json` or `onPreToolUse`/`onPostToolUse` hooks from the parent session.** This is a known limitation in Copilot SDK v1.0.47.
+
+**Impact:** The `dev-guard` extension blocks raw git commands (`git commit`, `git push`, etc.) via `onPreToolUse` hooks. This protection ONLY works in the main session. Sub-agents can freely run raw git commands without being intercepted.
+
+**Mitigation:** Prompt-level enforcement. Every agent file (`.github/agents/*.agent.md`), the constitution (`data/constitution.md`), standing orders (`data/standing-orders.md`), and copilot-instructions (`.github/copilot-instructions.md`) all contain explicit rules requiring dev-workflow tools (`dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, etc.) instead of raw git commands. This is the ONLY reliable enforcement mechanism until the SDK supports hook propagation.
+
+**When building new extensions that enforce governance via hooks:** Document this limitation prominently. Hooks-based governance is a defense-in-depth layer, not the primary enforcement. Prompt-level rules in agent definitions are primary.

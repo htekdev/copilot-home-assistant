@@ -3,19 +3,19 @@
   "jobs": [
     {
       "id": "morning-briefing",
-      "schedule": "0 5 * * 1-5",
+      "schedule": "0 6 * * 1-5",
       "enabled": true,
       "agent": "daily-briefing"
     },
     {
       "id": "weekend-briefing",
-      "schedule": "0 7 * * 0,6",
+      "schedule": "0 8 * * 0,6",
       "enabled": true,
       "agent": "daily-briefing"
     },
     {
       "id": "heartbeat",
-      "schedule": "*/30 5-21 * * *",
+      "schedule": "0 7,9,11,13,15,17,19,21 * * *",
       "enabled": true,
       "agent": "checkin"
     },
@@ -48,7 +48,7 @@
       "schedule": "0 6 * * 1-5",
       "enabled": true,
       "agent": "content-manager",
-      "prompt": "Run your morning trend scan. Focus on AI, developer tools, and your core product ecosystem. Check YouTube trending in tech and search for new blog-worthy topics."
+      "prompt": "Run your morning trend scan. Focus on AI, developer tools, and Copilot ecosystem. Check YouTube trending in tech and search for new blog-worthy topics."
     },
     {
       "id": "content-sunday-review",
@@ -73,13 +73,20 @@
     },
     {
       "id": "task-coach-nudge",
-      "schedule": "*/20 5-21 * * *",
+      "schedule": "20 7,9,11,13,15,17,19 * * *",
       "enabled": true,
       "agent": "task-coach"
     },
     {
+      "id": "task-coach-ask-paula",
+      "schedule": "0 10 * * *",
+      "enabled": true,
+      "agent": "task-coach",
+      "prompt": "Run the Ask {{PARENT_2}} flow. Send {{PARENT_2}} ONE short message asking if there's anything {{PARENT_1}} should handle today. Parse her response into tasks if she replies. Do NOT follow up if no response. This is the daily {{PARENT_2}} task-source check."
+    },
+    {
       "id": "email-triage",
-      "schedule": "0 11 * * *",
+      "schedule": "0 11,15 * * *",
       "enabled": true,
       "agent": "finance-manager",
       "prompt": "Scan Gmail inbox for bills, receipts, and time-sensitive action items. Auto-log expenses from receipts, create tasks for anything needing follow-up, flag overdue bills."
@@ -89,7 +96,7 @@
       "schedule": "30 6 * * *",
       "enabled": true,
       "agent": "finance-manager",
-      "prompt": "Run daily financial review. Sync accounts, check for unusual charges in the last 24h, flag new subscriptions or merchants not seen before, check if any budget category hit 80%+, and send a brief Telegram summary to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). Only message if there's something actionable \u2014 no noise. Use speak parameter."
+      "prompt": "Run daily financial review. Sync accounts, check for unusual charges in the last 24h, flag new subscriptions or merchants not seen before, check if any budget category hit 80%+, and send a brief Telegram summary to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). Only message if there's something actionable — no noise. Use speak parameter."
     },
     {
       "id": "weekly-finance-digest",
@@ -103,7 +110,7 @@
       "schedule": "0 17 * * 0",
       "enabled": true,
       "agent": "nutrition-chef",
-      "prompt": "Ask {{PARENT_1}} what they want to cook next week via Telegram. Do NOT suggest recipes or meals \u2014 just ask what they want on the plan. If he already told you earlier, use set_meal to populate the plan and generate_grocery_list for the shopping list. Check data/family/kitchen-inventory.md for available equipment before confirming any meal that requires specific appliances."
+      "prompt": "Ask {{PARENT_1}} what he wants to cook next week via Telegram. Do NOT suggest recipes or meals — just ask what HE wants on the plan. If he already told you earlier, use set_meal to populate the plan and generate_grocery_list for the shopping list. Check data/family/kitchen-inventory.md for available equipment before confirming any meal that requires specific appliances."
     },
     {
       "id": "monday-handoff",
@@ -113,23 +120,37 @@
     },
     {
       "id": "content-schedule-maintenance",
-      "schedule": "*/30 5-21 * * *",
+      "schedule": "45 7,11,15,19 * * *",
       "enabled": true,
       "agent": "content-scheduler"
     },
     {
+      "id": "luna-checkin",
+      "schedule": "10 8,12,16,20 * * *",
+      "enabled": true,
+      "agent": "luna",
+      "prompt": "Check in with {{PARENT_2}}. Load your memory first — check engagement tracking to see if you should skip this cycle. If not, pick a vibe that fits the time of day and send ONE short message to {{PARENT_2}} (chat_id: {{TELEGRAM_PARENT_2}}). Be her friend, not a bot."
+    },
+    {
+      "id": "parent-support-weekly",
+      "schedule": "0 9 * * 1",
+      "enabled": true,
+      "agent": "parent-support",
+      "prompt": "Weekly benefits check-in. Load memory tiers. Review ALL active benefits — check for approaching deadlines (next 14 days), stale statuses (no update in 14+ days), and newly-eligible programs. Create tasks for any actions needed. Research any programs in 'researching' status. Send {{PARENT_1}} a concise status summary via Telegram. Update working memory."
+    },
+    {
       "id": "content-analytics-check",
-      "schedule": "0 8,11,14,17,20 * * *",
+      "schedule": "5 8,14,20 * * *",
       "enabled": true,
       "agent": "content-analytics",
       "prompt": "Run your analytics check cycle. Load memory, pull performance data across all platforms, compute deltas against previous snapshots, check for engagement anomalies. Update working memory with new snapshots. If notable findings (viral post, significant growth, engagement drop), notify {{PARENT_1}} via Telegram."
     },
     {
       "id": "content-analytics-comments",
-      "schedule": "0 9,11,13,15,17,19,21 * * *",
+      "schedule": "35 9,15,21 * * *",
       "enabled": true,
       "agent": "content-analytics",
-      "prompt": "Run your comment management cycle. Load memory, scan recently published posts (last 48h) for new comments. Classify comments by sentiment. Auto-reply to questions, positive feedback, and constructive criticism following {{GITHUB_USERNAME}} brand voice. Flag comments needing {{PARENT_1}}'s personal attention via add_task. Max 20 replies per cycle. Log all activity."
+      "prompt": "Run your comment management cycle. Load memory, scan recently published posts (last 48h) for new comments using late_list_comments (cross-platform). Classify comments by sentiment. ACTIVELY REPLY to questions (with source links), positive feedback (thank + engage), and constructive criticism (acknowledge + address) using late_reply_comment. Use late_hide_comment for spam/abuse. Flag brand-sensitive or controversial comments as agent-surface tasks. Follow per-platform etiquette (LinkedIn=professional, Twitter=casual, YouTube=friendly). Max 20 replies per cycle. Log all activity."
     },
     {
       "id": "content-analytics-weekly-report",
@@ -139,18 +160,25 @@
       "prompt": "Generate the weekly performance report. Pull 7-day analytics across all platforms. Calculate: total reach, total engagement, avg engagement rate, top 3 posts, bottom 3 posts, follower growth. Compare week-over-week. Compute pillar-by-pillar performance breakdown. Identify content type and timing patterns. Generate actionable recommendations. Send full report to {{PARENT_1}} via Telegram (chat_id: {{TELEGRAM_PARENT_1}})."
     },
     {
+      "id": "nicu-care-checkin",
+      "schedule": "30 7,9,11,13,15,17,19,21 * * *",
+      "enabled": true,
+      "agent": "nicu-care",
+      "prompt": "NICU care check-in. Load your memory tiers first. Compute current CT time via PowerShell. Check if a pumping reminder is due (compare current time against schedule in data/nicu/schedule.json — send reminders 15 min before each session). If a pump reminder is due, send encouraging reminders to BOTH {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) and {{PARENT_2}} ({{TELEGRAM_PARENT_2}}) — keep {{PARENT_2}}'s message to 2-3 lines max. AGENT-TASK SELF-CHECK: query list_tasks(created_by='nicu-care', surface='agent', status='pending') — execute any you can handle (send reminders, log data, close stale monitoring tasks). Mark done via complete_task when finished. Check for any pending data collection items. Generate proactive tasks if needed (NICU visit prep, supply checks, upcoming deadlines). Log any updates to pumping-log.json or baby-journal.json if new data was shared. Update working memory before ending."
+    },
+    {
       "id": "repo-maintainer-pr-review",
-      "schedule": "0 7,9,11,13,15,17,19 * * *",
+      "schedule": "50 8,13,18 * * *",
       "enabled": true,
       "agent": "repo-maintainer",
-      "prompt": "Run PR review cycle. Scan all {{GITHUB_USERNAME}} repos for open PRs. Apply merge policy: auto-merge dependabot/bot PRs with green CI (squash + delete branch), review {{PARENT_1}}'s PRs and notify, close stale assistant drafts >60 days. Max 10 auto-merges per run. Only message {{PARENT_1}} if actions were taken."
+      "prompt": "Run PR review cycle. Scan all {{GITHUB_USERNAME}} repos for open PRs. Apply merge policy: auto-merge dependabot/bot PRs with green CI (squash + delete branch), review {{PARENT_1}}'s PRs and notify, close stale Copilot drafts >60 days. Max 10 auto-merges per run. Only message {{PARENT_1}} if actions were taken."
     },
     {
       "id": "repo-maintainer-issue-triage",
       "schedule": "0 8 * * *",
       "enabled": true,
       "agent": "repo-maintainer",
-      "prompt": "Run issue triage cycle. Search for untriaged issues across {{GITHUB_USERNAME}} repos (no:label or no:assignee). Auto-label by content pattern. Assign straightforward bugs/features/docs to the coding assistant. Flag security issues to {{PARENT_1}} immediately. Close stale issues >180 days with no activity. Don't close content-management issues (content backlog). Only message {{PARENT_1}} if actions were taken."
+      "prompt": "Run issue triage cycle. Search for untriaged issues across {{GITHUB_USERNAME}} repos (no:label or no:assignee). Auto-label by content pattern. Assign straightforward bugs/features/docs to Copilot. Flag security issues to {{PARENT_1}} immediately. Close stale issues >180 days with no activity. Don't close content-management issues (content backlog). Only message {{PARENT_1}} if actions were taken."
     },
     {
       "id": "repo-maintainer-weekly-report",
@@ -158,6 +186,27 @@
       "enabled": true,
       "agent": "repo-maintainer",
       "prompt": "Generate weekly repo health report. Scan all {{GITHUB_USERNAME}} repos: count open PRs/issues, check CI status, identify stale items, count what was merged/closed this week. Send structured Telegram report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). Always send this report even if everything is clean."
+    },
+    {
+      "id": "wellness-coach-morning",
+      "schedule": "0 8 * * *",
+      "enabled": true,
+      "agent": "wellness-coach",
+      "prompt": "Morning wellness check-in. Load your memory tiers. Compute current CT time. Check {{PARENT_1}}'s observations from last night. Review any BP readings, sleep data, or anxiety indicators. If concerning patterns, create a task for {{PARENT_1}} with specific guidance. Update working memory with morning assessment. Do NOT contact {{PARENT_2}} directly — work through {{PARENT_1}} and Luna."
+    },
+    {
+      "id": "wellness-coach-midday",
+      "schedule": "0 13 * * *",
+      "enabled": true,
+      "agent": "wellness-coach",
+      "prompt": "Midday wellness check-in. Load memory. Review any new data since morning (pump sessions as stress indicator, NICU updates, task completions). If {{PARENT_1}} or {{PARENT_2}} reported anxiety/stress, prepare a grounding technique suggestion as a task for {{PARENT_1}} to relay. Brief check — skip if no new data. Update working memory."
+    },
+    {
+      "id": "wellness-coach-evening",
+      "schedule": "0 18 * * *",
+      "enabled": true,
+      "agent": "wellness-coach",
+      "prompt": "Evening wellness wrap-up. Load memory. Summarize today's wellness indicators (BP, anxiety, sleep quality from last night, medication adherence). Log daily summary to long-term memory. If any concerns emerged today, create a consolidated task for {{PARENT_1}} with specific next steps. Prepare any bedtime relaxation suggestions. Update working memory with end-of-day assessment."
     },
     {
       "id": "context-audit-weekly",
@@ -171,49 +220,70 @@
       "schedule": "0 6 * * *",
       "enabled": true,
       "agent": "context-auditor",
-      "prompt": "Run QUICK daily context scan. Load memory. Focus on: (1) Contradiction check \u2014 scan foundational docs vs agent definitions for rule conflicts. (2) Working memory freshness \u2014 flag any data/agents/*/working.md not updated in 3+ days that has an active cron job. (3) Cron alignment \u2014 verify every cron.json agent entry has a matching .agent.md file. No auto-fixes. Accumulate findings for weekly audit. Only message {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) if critical contradictions found. Update memory."
+      "prompt": "Run QUICK daily context scan. Load memory. Focus on: (1) Contradiction check — scan foundational docs vs agent definitions for rule conflicts. (2) Working memory freshness — flag any data/agents/*/working.md not updated in 3+ days that has an active cron job. (3) Cron alignment — verify every cron.json agent entry has a matching .agent.md file. (4) AGENT-TASK SELF-CHECK: query list_tasks(created_by='context-auditor', surface='agent', status='pending') — execute any tasks you can handle (fix stale refs, update docs). Mark done via complete_task when finished. No auto-fixes on other items. Accumulate findings for weekly audit. Only message {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) if critical contradictions found. Update memory."
     },
     {
       "id": "parenting-coach-morning",
       "schedule": "0 8 * * *",
       "enabled": true,
       "agent": "parenting-coach",
-      "prompt": "Morning parenting check-in. Load your memory tiers. Compute current CT time. Review the family's current parenting situations \u2014 {{CHILD_1_NAME}}'s sibling adjustment, newborn parenting dynamics, and {{PARENT_2}}'s confidence indicators. Send ONE proactive tip or pep talk to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) based on what's relevant today. Vary content: tips, gotchas, celebrations, situational advice. If there's a specific situation being tracked, follow up on it. Keep {{PARENT_2}} messages rare and warm (2-3 lines max, only if genuinely encouraging). Create tasks for any parenting actions needed. Update working memory."
+      "prompt": "Morning parenting check-in. Load your memory tiers. Compute current CT time. Review the family's current parenting situations — {{CHILD_1_NAME}}'s sibling adjustment, NICU parenting dynamics, and {{PARENT_2}}'s confidence indicators. Send ONE proactive tip or pep talk to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) based on what's relevant today. Vary content: tips, gotchas, celebrations, situational advice. If there's a specific situation being tracked, follow up on it. Keep {{PARENT_2}} messages rare and warm (2-3 lines max, only if genuinely encouraging). Create tasks for any parenting actions needed. Update working memory."
     },
     {
       "id": "parenting-coach-afternoon",
       "schedule": "0 14 * * *",
       "enabled": true,
       "agent": "parenting-coach",
-      "prompt": "Afternoon parenting check-in. Load your memory tiers. Compute current CT time. This is typically post-care-visit time \u2014 check if there's guidance needed for {{CHILD_1_NAME}} after parents return from hospital. Provide situational advice if an active parenting situation needs follow-up. If nothing active, share a quick anticipatory tip or stay silent. Don't repeat morning's message topic. Max 1 Telegram to {{PARENT_1}}. Update working memory."
+      "prompt": "Afternoon parenting check-in. Load your memory tiers. Compute current CT time. This is typically post-NICU-visit time — check if there's guidance needed for {{CHILD_1_NAME}} after parents return from hospital. Provide situational advice if an active parenting situation needs follow-up. If nothing active, share a quick anticipatory tip or stay silent. Don't repeat morning's message topic. Max 1 Telegram to {{PARENT_1}}. Update working memory."
     },
     {
       "id": "content-creative-daily",
       "schedule": "0 7 * * 1-5",
       "enabled": true,
       "agent": "content-creative",
-      "prompt": "Daily LinkedIn post generation. Load your memory. Compute current CT time. Select a topic from: (1) {{GITHUB_USERNAME}}/content-management issues with status:ready or status:idea labels, (2) trending AI/dev topics via perplexity, (3) content pillar rebalancing. Research the topic. Write a LinkedIn post in the account owner's voice. Generate an AI image via OpenAI. Upload to Late and schedule for the next optimal LinkedIn posting time. Send {{PARENT_1}} a preview via Telegram. Update memory."
+      "prompt": "Daily LinkedIn post generation. Load your memory. Compute current CT time. Select a topic from: (1) {{GITHUB_USERNAME}}/content-management issues with status:ready or status:idea labels, (2) trending AI/dev topics via perplexity, (3) content pillar rebalancing. Research the topic. Write a LinkedIn post in {{PARENT_1}}'s voice. Generate an AI image via OpenAI. Upload to Late and schedule for the next optimal LinkedIn posting time. Send {{PARENT_1}} a preview via Telegram. Update memory."
+    },
+    {
+      "id": "content-creative-article-promo",
+      "schedule": "0 12 * * 1-5",
+      "enabled": true,
+      "agent": "content-creative",
+      "prompt": "Daily {{PERSONAL_DOMAIN}} article promotion on LinkedIn (SEO/backlink workflow). Load your memory. Compute current CT time. Read data/agents/content-creative/article-promo-log.json to see recently promoted articles. Browse the {{PERSONAL_DOMAIN}} article catalog by running: Get-ChildItem 'C:\\Repos\\{{GITHUB_USERNAME}}\\personal-site\\src\\content\\articles' -Filter '*.mdx' | Where-Object { $_.Name -notmatch 'weekly' }. EXCLUDE weekly roundup articles (azure-weekly, github-weekly, vscode-weekly, visual-studio-weekly, copilot-cli-weekly). Pick ONE evergreen article that: (1) was NOT promoted in the last 30 days (check the log), (2) is high-value thought leadership, (3) varies in pillar from yesterday's pick. Read the chosen article's frontmatter and first 50 lines to understand its content. Write a LinkedIn post that: hooks with a bold insight from the article, delivers 2-3 key takeaways in {{PARENT_1}}'s voice, ends with a CTA pointing to the full article on {{PERSONAL_DOMAIN}}. INCLUDE the article URL in the post body (e.g., https://{{PERSONAL_DOMAIN}}/articles/SLUG) — the goal is SEO backlinks so the link MUST be present. Run brand safety check per copilot-brand-safety skill. Generate an AI infographic image via the image-generation skill summarizing the article's key points. Upload image to Late via presign. Schedule the post for the next available LinkedIn slot (target 12:30 PM CT). Update article-promo-log.json with the promoted article slug and date. Send {{PARENT_1}} a preview via Telegram with speak parameter. Update working memory."
     },
     {
       "id": "entrepreneur-coach-daily",
       "schedule": "0 9 * * *",
       "enabled": true,
       "agent": "entrepreneur-coach",
-      "prompt": "Daily entrepreneurship check-in. Load entrepreneur-coach memory AND read data/agents/entrepreneur-driver/working.md for execution state. Compute current CT time. Review strategy priorities, shipped assets, scheduled validation posts, open entrepreneur tasks, and any signs of progress or drift. Push {{PARENT_1}} toward ONE high-leverage next move only \u2014 not a giant list. If there is nothing meaningful to push, stay silent. Create tasks for any newly discovered entrepreneurship actions. Update entrepreneur-coach memory and events log before ending."
+      "prompt": "Daily entrepreneurship check-in. Load entrepreneur-coach memory AND read data/agents/entrepreneur-driver/working.md for execution state. Compute current CT time. Review strategy priorities, shipped assets, scheduled validation posts, open entrepreneur tasks, and any signs of progress or drift. Push {{PARENT_1}} toward ONE high-leverage next move only — not a giant list. If there is nothing meaningful to push, stay silent. Create tasks for any newly discovered entrepreneurship actions. Update entrepreneur-coach memory and events log before ending."
     },
     {
       "id": "template-scheduler",
-      "schedule": "*/15 5-21 * * *",
+      "schedule": "15 7,12,17 * * *",
       "enabled": true,
       "agent": "platform-manager",
-      "prompt": "Run check_scheduled_triggers from the action-tracker extension.This evaluates schedule-based template triggers (e.g., parent-2-shower at 7 PM daily). Auto-expand templates with auto_expand=true, suggest others via Telegram to {{PARENT_1}}. Quick check \u2014 skip if nothing is due."
+      "prompt": "Run check_scheduled_triggers from the action-tracker extension.This evaluates schedule-based template triggers (e.g., paula-shower at 7 PM daily). Auto-expand templates with auto_expand=true, suggest others via Telegram to {{PARENT_1}}. Quick check — skip if nothing is due."
+    },
+    {
+      "id": "template-sync",
+      "schedule": "30 21 * * *",
+      "enabled": true,
+      "agent": "template-sync",
+      "prompt": "Run daily template sync. Diff rocha-family against copilot-home-assistant, strip PII, and create/update sync PR. Follow the progressive sync strategy. Check working memory for current state and what's next. Load pii-mapping.json before processing files."
     },
     {
       "id": "work-life-sync",
-      "schedule": "0 6,9,12,15,18 * * 1-5",
+      "schedule": "55 6,12,18 * * 1-5",
       "enabled": true,
       "agent": "work-life-sync",
-      "prompt": "Run calendar-to-Outlook availability sync. Load memory tiers. Compute current CT time. Check Google OAuth status \u2014 if expired, create ONE re-auth task and stop. Fetch personal Google Calendar events (next 3 days). Filter: weekdays only, time-bound (or all-day with PTO keywords), future only. Compute delta against synced events in working memory. For new/changed/deleted events, send structured mesh message to msix-home with OOF block instructions (showAs=oof, private, no attendees, no Teams, timezone {{TIMEZONE}}). Update sync state in working memory. Only message {{PARENT_1}} on errors. Update events.log."
+      "prompt": "Run calendar-to-Outlook availability sync. Load memory tiers. Compute current CT time. Check Google OAuth status — if expired, create ONE re-auth task and stop. Fetch personal Google Calendar events (next 3 days). Filter: weekdays only, time-bound (or all-day with PTO keywords), future only. Compute delta against synced events in working memory. For new/changed/deleted events, send structured mesh message to msix-home with OOF block instructions (showAs=oof, private, no attendees, no Teams, timezone {{TIMEZONE}}). Update sync state in working memory. Only message {{PARENT_1}} on errors. Update events.log."
+    },
+    {
+      "id": "realtor-team-standup",
+      "schedule": "0 8 * * 1",
+      "enabled": true,
+      "agent": "realtor-team",
+      "prompt": "Run weekly team standup. Load all team memory (core, working, manifest, progress). Compute current CT time. Determine current phase. Dispatch active sub-agents for this phase. Collect reports, update progress, and send Telegram summary to {{PARENT_1}} if noteworthy. Update working memory and events log."
     },
     {
       "id": "cloud-cost-audit",
@@ -221,6 +291,83 @@
       "enabled": true,
       "agent": "cloud-advisor",
       "prompt": "Run weekly AWS cost audit. Load memory tiers. Scan all regions for resources: EC2 instances (running + stopped), unattached EBS volumes, unassociated Elastic IPs, RDS instances, S3 buckets without lifecycle policies, idle Lambda functions. Pull Cost Explorer data for current month vs last month. Auto-cleanup: delete unattached EBS volumes, release unassociated EIPs, abort stale multipart uploads. Calculate total waste eliminated. Create tasks for optimizations requiring approval (instance termination, rightsizing). Send structured cost report to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter. Update working memory with new inventory and cost data."
+    },
+    {
+      "id": "skill-optimizer-scan",
+      "schedule": "5 8,16 * * *",
+      "enabled": true,
+      "agent": "skill-optimizer",
+      "prompt": "Run hourly optimization scan. Load memory tiers first. Audit agents, skills, and extensions for: (1) stale or contradicting skills, (2) skill extraction opportunities from bloated agents, (3) orphaned skills with no agent references, (4) agents not referencing skills they should know about, (5) extensions that don't align with current skill/agent definitions. Use the research-tools skill hierarchy for any lookups. Resolve issues directly — don't just flag them. Update working memory with findings. ALWAYS send a brief Telegram summary to {{PARENT_1}} (chat_id: {{TELEGRAM_PARENT_1}}) with speak parameter after each scan — even if nothing was found. Include: scan number, changes made (or 'clean pass'), agent/skill counts, and any issues resolved."
+    },
+    {
+      "id": "milk-mama-checkin-hourly",
+      "schedule": "10 9,13,17 * * *",
+      "enabled": true,
+      "agent": "milk-mama",
+      "prompt": "Hourly dev check-in — load memory tiers, pick up where you left off, implement the next item in the current phase. Run tests, commit code to {{GITHUB_USERNAME}}/milkmama and push. Update working memory with progress. Send brief status update to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter if significant progress was made. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers, status). You have Stripe keys in repo secrets — use them for payment integration. Detect diminishing returns — if stuck for 2+ cycles on the same issue, escalate to {{PARENT_1}}."
+    },
+    {
+      "id": "sms-outreach",
+      "schedule": "40 10,16 * * *",
+      "enabled": true,
+      "agent": "sms-outreach",
+      "prompt": "Load core.md, working.md, and contacts.json. Check replies via phone-read_sms before any new sends. If {{PARENT_1}} has not approved the campaign, do NOT send SMS; just maintain state and update progress. Once approved, send 5-10 personalized outreach messages from pending contacts, respect opt-outs, track replies, and update working memory."
+    },
+    {
+      "id": "agent-task-executor",
+      "schedule": "0 8,12,16,20 * * *",
+      "enabled": true,
+      "agent": "platform-manager",
+      "prompt": "Invoke the agent-task-executor skill. Execute pending agent-surface tasks following the skill protocol: query → filter → prioritize → batch (3-4) → dispatch dedicated agents in parallel → wait for completion → report results. Max 2 batches this cycle. Quality over speed — each task gets a focused agent."
+    },
+    {
+      "id": "client-site-template-a-checkin-hourly",
+      "schedule": "25 9,13,17 * * *",
+      "enabled": true,
+      "agent": "client-site-template-a",
+      "prompt": "Hourly dev check-in — load memory tiers, pick up where you left off, implement the next item in the current phase. Run build, commit code to {{GITHUB_USERNAME}}/client-site-template-a and push. Update working memory with progress. Send brief status update to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter if significant progress was made. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers, status)."
+    },
+    {
+      "id": "article-maintenance-daily",
+      "schedule": "0 6 * * *",
+      "enabled": true,
+      "agent": "article-maintenance",
+      "prompt": "Daily article maintenance run. Load memory tiers first (core.md + working.md). Check where you left off in the tag backlog. Process next batch of 5-10 untagged articles: read each article's content, assign 3-6 tags from the taxonomy in core.md, update frontmatter. Run SEO spot-check on 3-5 random articles (description length, title length, heading structure). Check 2-3 articles for broken internal links (verify linked article slugs exist). Commit all changes to personal-site and push directly to main. Update working.md with progress (articles tagged, issues found, next batch). Only notify {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, use speak param) if something actionable was found (broken links, major SEO gaps, milestone reached). Silent otherwise."
+    },
+    {
+      "id": "client-site-template-b-morning-sprint",
+      "schedule": "*/30 6-8 * * *",
+      "enabled": false,
+      "agent": "client-site-template-b",
+      "prompt": "Aggressive morning sprint — check current project status from memory files (data/agents/client-site-template-b/core.md, working.md, and long-term.md as needed), review the spec (data/specs/client-site-template-b-site-v1.md), check and execute any pending agent-surface tasks relevant to this client site, then continue working on the highest-priority item. Run build before any push, update working memory with progress, and send {{PARENT_1}} a concise Telegram progress update at chat_id {{TELEGRAM_PARENT_1}} ALWAYS using the speak parameter."
+    },
+    {
+      "id": "client-site-template-b-daily-checkin",
+      "schedule": "0 9 * * *",
+      "enabled": true,
+      "agent": "client-site-template-b",
+      "prompt": "Daily check-in — check current project status from memory files (data/agents/client-site-template-b/core.md, working.md, and long-term.md as needed), review the spec (data/specs/client-site-template-b-site-v1.md), check and execute any pending agent-surface tasks relevant to this client site, then continue working on the highest-priority item. Run build before any push, update working memory with progress, and send {{PARENT_1}} a concise Telegram progress update at chat_id {{TELEGRAM_PARENT_1}} ALWAYS using the speak parameter. Include a standup format with phase, yesterday's progress, today's plan, blockers, and status."
+    },
+    {
+      "id": "google-ads-daily-metrics",
+      "schedule": "0 7 * * *",
+      "enabled": true,
+      "agent": "google-ads-manager",
+      "prompt": "Daily metrics check and exploration run. Load memory tiers (core.md + working.md). Compute current CT time. Follow the Daily Metrics Check Workflow from your agent definition. Phase 1: Auth check via Playwright — navigate to ads.google.com/aw/campaigns. If not authenticated, notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) and stop. Phase 2: Dismiss ad blocker dialog, collect campaign metrics (impressions, clicks, CTR, conversions, cost). Compare against previous day's snapshot in working.md. Phase 3: Check conversion status for all 5 actions. Check Google tag hit count. Phase 4: Pick ONE unexplored page from the exploration queue in .github/skills/google-ads-playwright/SKILL.md — explore it, document URL, selectors, data available. Update the skill SKILL.md with findings. Phase 5: Update working.md with today's metrics snapshot, exploration progress. Append events.log. Send concise Telegram summary ({{TELEGRAM_PARENT_1}}, speak param) — lead with metrics, then deltas, then exploration findings. Silent if no campaigns and no notable findings."
+    },
+    {
+      "id": "google-ads-weekly-report",
+      "schedule": "0 19 * * 0",
+      "enabled": true,
+      "agent": "google-ads-manager",
+      "prompt": "Weekly performance report. Load ALL memory tiers (core.md + working.md + long-term.md). Compile this week's daily metric snapshots from working.md into weekly totals: impressions, clicks, CTR, conversions, spend, CPC, CPA. Compare against previous week from long-term.md. Identify top/bottom performers if multiple campaigns exist. Review conversion health across all 5 actions. Check Google tag hit growth since last week. Summarize exploration progress (pages explored, new capabilities learned). Generate recommendations based on trends. Send comprehensive weekly report to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param). Promote weekly summary to long-term.md. Reset working.md weekly metrics section. Update events.log."
+    },
+    {
+      "id": "content-blitz-hourly",
+      "schedule": "0 * * * *",
+      "enabled": true,
+      "agent": "content-blitz",
+      "prompt": "CONTENT BLITZ — Hourly State Machine Cycle. Load memory tiers (core.md + working.md). Read the spec at data/specs/content-blitz-v1.md. Compute current CT time and determine campaign day (May 14=Day1 through May 28=Day14). If outside campaign window, disable this cron job and exit. STATE MACHINE: Read pipeline_state from working.md ## Today section. Execute the action for that state, advance to the next state on success, stay on failure (increment retry_count). If retry_count >= 3, alert {{PARENT_1}} and stay. STATES: idle: Pick next idea. (1) Check {{PARENT_1}} idea queue in working.md. (2) Scan {{GITHUB_USERNAME}} repos. (3) Fall back to calendar theme. Set pipeline_state = step1_idea. | step1_idea: Research topic. Write baton fields (today_date, today_day_number, today_theme, today_topic, today_angle, today_outline, today_talking_points, today_examples). Set step1_complete = true, pipeline_state = step2_newsletter. Send morning kickoff to {{PARENT_1}}. | step2_newsletter: Dispatch blog-writer in NEWSLETTER mode (2000+ words, premium deep-dive, brand safety, no employer names). After PR created, set pipeline_state = step2_review. | step2_review: Dispatch code-review on the PR. Quality gate: banned patterns (TODO, TBD, V2, coming soon, placeholder, lorem ipsum), completeness, CTAs, brand safety. If fails, remediate on same branch (max 2 cycles). On pass: set pipeline_state = step2_merge. | step2_merge: Use dev_merge_pr to merge newsletter PR (squash, delete branch). Record today_newsletter_merged = true, step2_complete = true. Set pipeline_state = step3_blueprint. | step3_blueprint: Dispatch blueprint-manager. Fully written content, no stubs. Set pipeline_state = step3_review. | step3_review: Quality gate review + remediation. On pass: set pipeline_state = step3_merge. | step3_merge: Merge blueprint PR via dev_merge_pr. Record today_blueprint_merged = true, step3_complete = true. Set pipeline_state = step4_blog. | step4_blog: Dispatch blog-writer in TEASER mode (800-1200 words, 3 newsletter CTAs, blueprint link). Set pipeline_state = step4_review. | step4_review: Quality gate review + remediation. On pass: set pipeline_state = step4_merge. | step4_merge: Merge blog PR via dev_merge_pr. Record today_blog_merged = true, step4_complete = true. Set pipeline_state = step5_social. | step5_social: Dispatch content-creative (2-4 social posts with images, all link to blog). Set pipeline_state = step5_review. | step5_review: Quality gate review. Schedule posts after pass. Record step5_complete = true. Set pipeline_state = metrics. | metrics: Dispatch content-analytics for performance data. Archive today baton to Day History. Reset Today for next idea. Send daily report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param). Set pipeline_state = idle. AFTER executing: Update pipeline_state and retry_count in working.md. Append action to events.log. CRITICAL: Use dev_merge_pr for all merges. Brand safety check on ALL content. NEVER mention previous employer by name."
     }
   ]
 }

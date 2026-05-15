@@ -26,16 +26,20 @@ Automate Google Ads management via Playwright browser control. This skill docume
 
 6. **Use `ref` attributes for targeting.** Google Ads elements often have `ref="e941"` style attributes that are more stable than class names.
 
+7. **Campaign creation via Playwright is BLOCKED by passkey re-auth.** Google requires passkey/biometric verification when saving the Keywords & ads step in the campaign creation wizard. Playwright cannot complete hardware passkey challenges (`accounts.google.com/v3/signin/challenge/pk`). The re-auth triggers on the step TRANSITION, not on content changes — even clicking "Next" with zero modifications triggers it. **Workaround**: {{PARENT_1}} creates campaigns manually; agent manages post-creation (monitoring, negative keywords, optimization). **Future fix**: Google Ads REST API with OAuth tokens.
+
+8. **Use `page.fill()` for form inputs, NOT DOM `.value = x`.** Google Ads uses Angular which doesn't detect DOM-level value changes. `page.fill()` properly triggers change detection and input events.
+
 ---
 
 ## Account Details
 
 | Field | Value |
 |-------|-------|
-| **Account Name** | Htek Dev |
-| **Customer ID** | {{PHONE_NUMBER}} |
+| **Account Name** | {{PROJECT_BRAND}} |
+| **Customer ID** | {{GOOGLE_ADS_CUSTOMER_ID}} |
 | **Login Email** | {{EMAIL_ADDRESS}} |
-| **Google Ads Tag ID** | AW-18153793739 |
+| **Google Ads Tag ID** | {{GOOGLE_ADS_TAG_ID}} |
 | **Base URL** | https://ads.google.com |
 | **Dashboard URL** | https://ads.google.com/aw/campaigns |
 
@@ -45,7 +49,7 @@ These parameters appear in authenticated URLs and may be needed for direct navig
 
 ```
 ocid={{PHONE_NUMBER}}
-euid=166612088
+euid={{GOOGLE_ADS_EUID}}
 __u={{PHONE_NUMBER}}
 uscid={{PHONE_NUMBER}}
 __c={{PHONE_NUMBER}}
@@ -60,13 +64,16 @@ __c={{PHONE_NUMBER}}
 | Page | URL Path | How to Get There |
 |------|----------|-----------------|
 | Campaigns Dashboard | `/aw/campaigns` | Main landing page after login |
-| Ad Groups | `/aw/adgroups` | Campaigns menu > Ad groups |
+| Asset Groups | `/aw/assetgroup` | Campaigns menu > Asset groups (PMax uses these instead of ad groups) |
+| Ad Groups | `/aw/adgroups` | N/A for PMax campaigns — redirects to Overview |
 | Ads & Assets | `/aw/ads` | Campaigns menu > Ads & assets |
 | Keywords | `/aw/keywords` | Campaigns menu > Keywords |
 | Audiences | `/aw/audiences` | Campaigns menu > Audiences |
 | Conversions Summary | `/aw/conversions` | Goals menu > Conversions > Summary |
 | Account Settings | `/aw/accountsettings` | Admin menu > Account settings |
 | Billing | `/aw/billing` | Admin menu > Billing & payments |
+
+| Recommendations | `/aw/recommendations` | Campaigns menu (left nav) > Recommendations |
 
 ### Tools & Data
 
@@ -82,12 +89,15 @@ __c={{PHONE_NUMBER}}
 
 ```
 ├── Campaigns
+│   ├── Overview
+│   ├── Recommendations
+│   ├── Insights and reports
 │   ├── Campaigns (main dashboard)
-│   ├── Ad groups
-│   ├── Ads & assets
-│   ├── Keywords
-│   ├── Audiences
-│   └── Topics
+│   ├── Asset groups (PMax — replaces ad groups)
+│   ├── Experiments
+│   ├── Campaign groups
+│   ├── Assets
+│   └── Audiences, keywords, and content
 ├── Goals
 │   ├── Conversions
 │   │   └── Summary (conversion actions list)
@@ -98,10 +108,13 @@ __c={{PHONE_NUMBER}}
 │   ├── Keyword planner
 │   ├── Performance planner
 │   └── Ad preview and diagnosis
+├── Billing
+│   └── Billing & payments
 ├── Admin
 │   ├── Account settings
 │   ├── Access and security
 │   └── Billing & payments
+├── Change history
 └── Reports
     ├── Predefined reports
     └── Dashboards
@@ -240,9 +253,79 @@ if (manageBtn) {
 }
 ```
 
+### 6. View Asset Groups (Performance Max)
+
+```javascript
+// Navigate to asset groups
+await page.goto('https://ads.google.com/aw/assetgroup');
+await page.waitForTimeout(3000);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(500);
+
+// Read asset group data from table
+const assetGroups = await page.evaluate(() => {
+  const grid = document.querySelector('[aria-label="Asset groups"], grid');
+  if (!grid) return { error: 'No grid found' };
+  const rows = grid.querySelectorAll('[role="row"]');
+  return Array.from(rows).slice(1).map(row => { // skip header
+    const cells = row.querySelectorAll('[role="gridcell"]');
+    return Array.from(cells).map(c => c.textContent?.trim());
+  });
+});
+console.log(JSON.stringify(assetGroups, null, 2));
+```
+
+**Asset Groups table columns:** Status, Asset Group, Campaign, Assets, Ad Strength, Status (eligibility), Audience signal, Search themes, Clicks, Impr., CTR, Avg. CPC, Cost, Conv. rate, Conversions, Cost / conv.
+
+**Key findings (2026-05-14):**
+- PMax campaigns use **asset groups** instead of traditional ad groups
+- `/aw/adgroups` redirects to Overview for PMax accounts
+- Asset groups are accessed via Campaigns menu > Asset groups
+- URL includes `assetGroupTableMode=true` parameter
+- Ad Strength shown as progress bar with label (Average/Good/Excellent)
+- Audience signals and search themes have expandable details
+
 ---
 
-## Playwright Tips for Google Ads
+### 7. View and Apply Recommendations
+
+```javascript
+// Navigate to recommendations
+await page.goto('https://ads.google.com/aw/recommendations');
+await page.waitForTimeout(3000);
+await page.keyboard.press('Escape');
+await page.waitForTimeout(500);
+
+// Read optimization score
+const score = await page.evaluate(() => {
+  const pb = document.querySelector('[role="progressbar"]');
+  return pb?.getAttribute('aria-label') || pb?.textContent?.trim();
+});
+console.log('Optimization score:', score);
+
+// Read recommendation cards
+const cards = await page.evaluate(() => {
+  const options = document.querySelectorAll('[role="option"]');
+  return Array.from(options).map(o => ({
+    text: o.textContent?.trim().substring(0, 200)
+  }));
+});
+console.log(JSON.stringify(cards, null, 2));
+```
+
+**Recommendations page structure (2026-05-14):**
+- URL: `/aw/recommendations` with `opp=` param for individual recommendations
+- Tabs: "Recommendations" (selected) | "Auto-apply settings"
+- Shows optimization score as progressbar (0-100%)
+- Cards in a `listbox` with `option` items, each with "View recommendation" button
+- Detail pages: opp=101 (sitelinks), opp=134 (conversion tracking), opp=221 (video asset)
+- Apply workflow: View → select items (checkboxes in tree) → Apply button
+- Some recommendations are multi-step wizards (e.g., conversion tracking = 4 steps)
+- Sitelinks: select from existing sitelink assets, then Apply. Creates account-level sitelinks.
+
+---
+
+
 
 ### Element Targeting Strategy
 
@@ -325,7 +408,7 @@ async function extractTable(page) {
 | Dynamic class names | Target by `ref`, `role`, `aria-label`, or text content instead |
 | iframes for tag details | Use `contentFrame()` to switch context into iframes |
 | Authentication expires | Check URL after navigation — if redirected to accounts.google.com, abort and notify |
-| Multiple Google accounts | Ensure correct account is selected — check for Customer ID {{PHONE_NUMBER}} |
+| Multiple Google accounts | Ensure correct account is selected — check for Customer ID {{GOOGLE_ADS_CUSTOMER_ID}} |
 
 ---
 
@@ -347,7 +430,8 @@ The daily cron job (`google-ads-exploration`) follows this procedure:
 
 ### Exploration Queue (pages not yet documented in detail)
 
-- [ ] Ad Groups page — element structure, metrics available
+- [x] Asset Groups page — PMax asset groups, ad strength, audience signals (2026-05-14)
+- [x] Recommendations page — optimization score, recommendation cards, apply workflow (2026-05-14)
 - [ ] Ads & Assets page — ad creative details, performance per ad
 - [ ] Keywords page — keyword performance, quality scores, bid data
 - [ ] Audiences page — audience segments, targeting options
@@ -356,7 +440,6 @@ The daily cron job (`google-ads-exploration`) follows this procedure:
 - [ ] Keyword Planner — search volume, competition data
 - [ ] Performance Planner — forecasting tools
 - [ ] Ad Preview and Diagnosis — test how ads appear
-- [ ] Recommendations page — Google's optimization suggestions
 - [ ] Change History — audit log of account changes
 - [ ] Campaign settings — bidding strategies, targeting, scheduling
 
