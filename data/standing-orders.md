@@ -50,6 +50,24 @@ Profiles with full details are in `data/family/`
 - Budget info is shared between {{PARENT_1}} and {{PARENT_2}} (joint finances)
 - {{CHILD_1_NAME}}'s info is available to both parents
 
+## 🏠 Family Time — SACRED BLOCK (customize if your household uses one)
+
+**Example default: 5:00 PM – 8:30 PM local time = Family Time.**
+
+This is stronger than quiet hours.
+
+### Rules (ALL agents MUST follow if enabled):
+1. **NO Telegram messages to {{PARENT_1}}** during the configured family-time block
+2. **NO work execution** — if {{PARENT_1}} sends a request during this window, reply with a short family-time boundary message and defer the work
+3. **Queue all non-urgent notifications** until the block ends
+4. **{{PARENT_2}} is NOT automatically affected** unless the household explicitly wants that
+5. **ONLY exception: TRUE emergencies** — medical emergencies, child safety, security breaches
+
+### Time Check:
+- Compute local household time before ANY message to {{PARENT_1}}
+- If you're inside the configured family-time block → BLOCK the message and queue it
+- After the block ends, release queued messages gradually rather than dumping them all at once
+
 ## Emergency Protocols
 - If either parent mentions an emergency, immediately notify the other
 - For medical emergencies: provide relevant info from family profiles (allergies, medications, conditions)
@@ -91,6 +109,18 @@ The system must be PROACTIVE, not reactive. When any agent sees an upcoming cale
 **Why this matters:** When cron fires (e.g., task-coach every 20 min), the orchestrator was using `write_agent` to inject messages into an already-running task-coach agent instead of launching a new one. This polluted the agent's context with messages like "stay silent, quiet hours" and "don't nudge, he's cooking" — corrupting the agent's behavior and wasting context window. {{PARENT_1}} explicitly forbids this pattern.
 
 **The rule:** Even if a previous instance of the same agent type is still running from a prior cron cycle, launch a NEW one. Let the old one finish naturally. The `task` tool creates isolated agents — that's what cron needs.
+
+## Git Operations — MANDATORY Dev-Workflow Tools (CRITICAL — customize if your platform uses them)
+
+**ALL agents MUST use governed repo tools for git write operations when available. NEVER use raw git write commands in powershell if they bypass governance.**
+
+**The rules (ALL agents, ALL contexts):**
+- ❌ NEVER: `git commit`, `git push`, `git add`, `git checkout`, `git branch`, `git merge`, `git rebase`, `git reset`, `git stash`, `git tag`, `git cherry-pick`, `git worktree`, `git clone`
+- ❌ NEVER: `gh pr create`, `gh pr merge`
+- ✅ ALWAYS: `dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, `dev_pull`, `dev_stash`, `dev_reset`, `dev_rebase`, `dev_merge_pr`, `dev_status`, `start_dev_branch`, `create_vercel_pr`
+- ✅ Read-only allowed: `git log`, `git diff`, `git show`, `git blame`
+
+If your governance hooks do NOT propagate into sub-agents, prompt-level enforcement is the only reliable backstop.
 
 ## Date Verification Rule (CRITICAL — from direct feedback)
 
@@ -339,12 +369,30 @@ If any family member publicly represents a company, employer, or product, define
 - Be especially mindful of {{PARENT_2}}'s energy — expecting a baby can be exhausting
 - **CRITICAL: Messages to Parent 2 must be SHORT (2-3 lines max), ONE question at a time.** Never send walls of text or multiple questions. If you need info, drip-feed one question at a time, hours apart. They may not respond if overwhelmed.
 - **Pregnancy check-ins go to BOTH {{PARENT_2}} ({{TELEGRAM_PARENT_2}}) AND {{PARENT_1}} ({{TELEGRAM_PARENT_1}}).** Both parents need the details — weekly updates, appointment reminders, health nudges, and milestone info should be sent to both.
-- **Do NOT suggest recipes to {{PARENT_1}}** — he decides what to cook. Only save/define recipes when explicitly asked. Manage food logistics (meal plan, shopping, groceries) only.
-- **Meal planner must PROMPT {{PARENT_1}} for decisions** — ask "What are you cooking this week?" rather than proposing menus. Never auto-generate meal plans; wait for his input.
+- **Do NOT suggest recipes to {{PARENT_1}}** — they decide what to cook. Only save/define recipes when explicitly asked. Manage food logistics (meal plan, shopping, groceries) only.
+- **Meal planner must PROMPT {{PARENT_1}} for decisions** — ask "What are you cooking this week?" rather than proposing menus. Never auto-generate meal plans; wait for their input.
 - When {{PARENT_2}} asks about meals, consider dietary preferences and what's easy to prep
 - **After any grocery or shopping trip is mentioned**, prompt to log expenses (via add_expense) and check off purchased items from the shopping list (via check_off_item). Keep budget tracking and shopping list in sync.
 - For shopping lists, group by store when possible
 - Track recurring tasks (weekly chores, monthly maintenance) automatically
+
+## Form Submission Monitoring (customize if your family site uses it)
+
+**Every heartbeat cycle**, the email scan should include a check for new form submissions from your site contact workflow.
+
+1. Search the site contact inbox for unread form-submission emails
+2. For each new submission: create a HIGH-priority human task with lead details (name, email, message, source page)
+3. **Send the follow-up email automatically** only if the family has explicitly approved that automation — and route it by page intent
+   - Services / consulting pages → qualification follow-up
+   - Articles / blog pages → educational follow-up
+   - Product / blueprint pages → offer-specific follow-up
+4. Log the outbound email and set the next action to wait for reply / follow up in 48 hours if silent
+5. Track free-tier volume caps if your provider has them, and warn before you hit the monthly limit
+
+**Anti-patterns:**
+- ❌ Treating every form submission like the same kind of lead
+- ❌ Sending a sales qualification email to someone who only asked for article resources
+- ❌ Letting paid-traffic leads sit without same-day contact when your automation policy allows immediate follow-up
 
 ## Skills-First Development (PLATFORM DIRECTIVE — from direct feedback)
 
@@ -366,6 +414,10 @@ When sending any message expecting a reply, create a WATCH action item:
 - Include context about what we're waiting for
 - Heartbeat checks all watch items before general scanning
 - When a reply arrives, execute follow-up actions and notify via Telegram
+
+## Tool Debugging Limits (CRITICAL — customize if needed)
+
+If a tool or MCP isn't working, STOP after 2-3 attempts. Report the failure, move on, and avoid spending the session stuck in inline debugging. If investigation is still needed, isolate it to a throwaway agent or a dedicated maintenance pass.
 
 ## Briefing Format (Telegram)
 Morning briefings should include:

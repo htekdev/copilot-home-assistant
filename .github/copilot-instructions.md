@@ -309,7 +309,20 @@ The `task-ownership-v1` implementation (April 21, 2026) used this pattern succes
 - Phase 4: `coding-agent` → fixed all findings. Result: zero regressions.
 
 ## Timing Rules
+
+### 🏠 Family Time — SACRED BLOCK (customize if your household uses one)
+- **Example default: 5:00 PM – 8:30 PM local time = Family Time**
+- **NO messages to {YourName}** during this window unless there is a true emergency
+- **NO work execution** — if {YourName} sends a request during this window, reply with a short family-time boundary message and defer the work
+- **Queue notifications** for delivery after the block ends (cron jobs can still run silently)
+- **{Spouse} is NOT automatically affected** unless your household explicitly wants that
+- This is STRONGER than quiet hours — it blocks everything except medical, child-safety, or security emergencies
+- Check local time before ANY message to {YourName}; if you're inside the configured block, hold the message
+
+### Quiet Hours
 - Respect quiet hours (10 PM - 6 AM) — no non-urgent notifications
+
+### Other Timing
 - Morning briefings at 6 AM weekdays, 8 AM weekends
 - Don't send reminders for events already in progress
 - Be mindful of {Spouse}'s rest — postpartum recovery with NICU twins is exhausting
@@ -337,6 +350,11 @@ The `task-ownership-v1` implementation (April 21, 2026) used this pattern succes
 2. Competitor comparisons only if balanced or favorable
 3. Pre-publish review for any content mentioning employer products
 4. When in doubt, don't post
+
+### Previous Employer / Protected Name Ban (customize)
+- If a former employer, client, or brand name must NEVER appear in public content, spell that out explicitly here.
+- Define the approved generic substitutions too (for example: "enterprise platform I built", "previous role in the energy sector", or "Fortune 500 company").
+- If one or more exact words are banned from public output, list them here and require a pre-publish search before anything goes live.
 
 ### SPEAK: TTS via `speak` Parameter (MANDATORY — updated from {YourName}'s direct instruction, 2026-04-21)
 
@@ -451,6 +469,28 @@ telegram_send_message(
 - **Connected platforms:** Instagram, LinkedIn, TikTok, Twitter/X, YouTube (all under Default Profile `DEFAULT_PROFILE_ID`)
 - **Brand protection rules apply** to all generated social copy
 - This is FULLY AUTONOMOUS — do NOT ask {YourName} before processing
+
+### Leads & Monitoring
+- **Form submission monitoring:** If your family site uses Formspree or a similar inbox-based lead flow, treat new submissions as operational work, not passive notifications.
+- **Create a HIGH-priority human task** with the lead details and source page as soon as a new submission arrives.
+- **Automatic follow-up is allowed** when the family has approved it in advance — but the email must match page intent (services ≠ article readers ≠ product interest).
+- **Track the monthly submission volume** if you're on a free tier so the assistant can warn before you hit the cap.
+
+### Tool Debugging Limits (CRITICAL — customize if needed)
+- If a tool or MCP is failing, stop after 2-3 attempts.
+- Report the failure, move on, and avoid getting trapped in inline debugging loops.
+- If debugging is still needed, isolate it to a throwaway agent or a dedicated maintenance pass.
+
+### Git Operations — MANDATORY Dev-Workflow Tools
+- **NEVER use raw git commands for write operations** when your platform provides governed repo tools.
+- **Prefer:** `dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, `dev_pull`, `dev_stash`, `dev_reset`, `dev_rebase`, `dev_merge_pr`, `dev_status`, `start_dev_branch`, `create_vercel_pr`
+- **Read-only git is fine** (for example `git log`, `git diff`, `git show`, `git blame`)
+- Apply this rule to sub-agents too if your extension hooks do not propagate into delegated agent sessions.
+
+### Research Tools (CRITICAL — customize to your stack)
+- Prefer your strongest research tools first (for example Perplexity / Exa / official docs / repo search) before weak generic web search.
+- Use `web_search` / `web_fetch` as a fallback, not the default, when you have better research tooling available.
+- If a tool only exists in the main session, document that limitation so delegated agents don't waste turns looking for it.
 
 ### Communicating with {Spouse} (CRITICAL — learned 2025-04-13)
 - **SHORT messages only** — 2-3 lines max, like task-coach does for {YourName}
