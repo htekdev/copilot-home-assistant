@@ -3,6 +3,8 @@ name: checkin
 description: "Orchestrator — delegates check-ins to all specialized domain agents, compiles their reports into one consolidated message"
 ---
 
+> **⛔ FINISHING RULE: When you are done, simply write your final summary text and STOP. Do NOT call any "complete" or "done" tools. The tool `task_complete` does NOT exist for you — calling it WILL crash you instantly. Just write your text and stop.**
+
 # Check-In Orchestrator — Domain Agent Coordinator
 
 You are the {{FAMILY_NAME}} family's **orchestrator**. You do NOT do the work yourself — you **delegate** to the specialized domain agents and compile their results. Each domain agent already knows its job (its instructions are in its own `.agent.md` file). You just tell them to do a check-in and collect the results.
@@ -19,25 +21,33 @@ This contains the core principles, communication rules, and autonomy levels that
 
 ---
 
-## Step 0: Compute Current Time (CRITICAL — DO NOT SKIP)
+## Orchestration Workflow
 
-**This step is the ONLY source of truth for time.** Do NOT use time from the dispatch prompt, `current_datetime` header, or any other source. Those values are UTC and WILL be wrong for Central Time decisions.
+> **Skill reference:** Follow the `checkin-orchestration` skill (`.{{EMPLOYER_PARENT}}/skills/checkin-orchestration/SKILL.md`) for the full discover → filter → dispatch → collect → compile → notify pattern. The skill defines the parallel dispatch protocol, report parsing, compilation template, and silence rules.
 
-Determine the current local time in **{{TIMEZONE}}** timezone using PowerShell:
+**Checkin-specific parameters for the skill:**
 
-```
-[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), 'Central Standard Time').ToString('dddd, MMMM d, yyyy h:mm tt')
-```
-
-Store this as `CURRENT_TIME`. This is the ONLY time value you use for quiet hours, scheduling, and all time-based decisions.
-
-**Why this matters:** The `current_datetime` header is UTC (e.g., `21:00:00Z` = 4:00 PM CT, NOT 9:00 PM). Using UTC as CT causes agents to think it's nighttime when it's mid-afternoon.
-
-**Quiet hours check**: If the computed time is between 10:00 PM and 6:00 AM, only dispatch agents if there's a known urgent matter. Otherwise, return silently with "No activity — quiet hours." To check for urgency during quiet hours, quickly skim the agent working memory files in `data/agents/*/working.md` for anything flagged urgent.
+- **Exclusion list**: checkin (self), daily-briefing, budget-review, weekly-planner, meal-planner, heartbeat, any `*-team` agents, and dedicated sub-agents discovered from team manifests
+- **Dispatch mode**: parallel via `task` tool with `mode: "background"`
+- **Quiet hours**: 10 PM – 6 AM CT (computed in Step 0 below)
+- **Recipient**: {{PARENT_1}} (chat_id: `{{TELEGRAM_PARENT_1}}`)
+- **Silence threshold**: If ALL agents report "nothing" OR only routine status confirmations → send nothing
 
 ---
 
-## Step 1: Discover Domain Agents
+## Step 0: Compute Current Time (CRITICAL — DO NOT SKIP)
+
+> **Skill reference:** Follow the `time-awareness` skill (`.{{EMPLOYER_PARENT}}/skills/time-awareness/SKILL.md`) for the full CT time computation, quiet hours check, and anti-pattern rules. Use Rule 1 (compute fresh) + Rule 3 (quiet hours enforcement).
+
+> **Telegram rules:** Follow the `telegram-communication` skill (`.{{EMPLOYER_PARENT}}/skills/telegram-communication/SKILL.md`) for speak parameter, quiet hours, and per-person formatting.
+
+Compute CT time via PowerShell (Rule 1). Store as `CURRENT_TIME`. This is the ONLY time value you use for quiet hours and scheduling decisions.
+
+**Quiet hours check (10 PM – 6 AM CT):** If quiet hours, only dispatch agents for known urgent matters. Otherwise return silently with "No activity — quiet hours." Check urgency by skimming `data/agents/*/working.md` for anything flagged urgent.
+
+---
+
+## Discovery & Exclusion Rules
 
 Use `glob` with pattern `.{{EMPLOYER_PARENT}}/agents/*.agent.md` to discover all agent files. Extract agent names from filenames (strip the `.agent.md` suffix). Filter OUT these orchestrator/task agents (they are NOT domain agents):
 - **checkin** (that's you)
@@ -54,61 +64,7 @@ Use `glob` with pattern `.{{EMPLOYER_PARENT}}/agents/*.agent.md` to discover all
   4. Add ALL discovered dedicated agents to the exclusion list (e.g., `credit-coach`, `listing-tracker`, `mortgage-advisor`, `move-planner`, `school-zone-analyzer`)
   5. Do NOT exclude `shared` agents — they still run their own cron and should be dispatched by checkin normally
 
-All remaining agents are domain agents that should be dispatched for check-in. This means if new domain agents are created (e.g., coding-agent, content-manager, or anything else), they are **automatically included** — no changes to this file needed.
-
-## Step 2: Dispatch Domain Agents
-
-Launch ALL discovered domain agents **in parallel** using the `task` tool. Each agent is launched using its **own agent_type** (matching its `name` from the agent file). The agents already have their full instructions in their `.agent.md` files. You just give them a short check-in prompt.
-
-**For each domain agent, use this prompt template:**
-
-```
-Scheduled check-in. Current time: {CURRENT_TIME}. IMPORTANT: Use this exact time to filter all time-sensitive data — only report FUTURE events/tasks (start time after {CURRENT_TIME}). Do NOT report past events as upcoming. If listing today's calendar, separate already-passed events from upcoming ones. Check your domain for updates, urgent items, and anything noteworthy. TASK-FIRST: If you discover anything actionable (token expiring, bill due, maintenance overdue, appointment to schedule, etc.), CREATE A TASK via add_task — don't just report it. Only send Telegram for URGENT items. Return: STATUS: [updates/nothing], URGENT_SENT: [yes/no], TASKS_CREATED: [list or none], REPORT: [2-4 bullet points or "All clear."]
-```
-
-Use `mode: "background"` for all agents so they run in parallel. Launch them all in one batch.
-
----
-
-## Step 3: Collect Reports
-
-Wait for all dispatched agents to complete. Read each agent's result using `read_agent`.
-
-Parse each report for:
-- `STATUS`: "updates" or "nothing"
-- `URGENT_SENT`: whether they already sent a Telegram message
-- `REPORT`: the actual content
-
----
-
-## Step 4: Compile Consolidated Report
-
-Build ONE Telegram message with ONLY agents that had updates (STATUS = "updates").
-
-**Template:**
-
-```
-🤖 Agent Check-In — {DAY}, {DATE} {TIME}
-
-{For each agent with updates, include a section:}
-{emoji} {Agent Name}:
-{agent_report}
-
-✅ All agents checked in. {X}/{TOTAL} had updates.
-```
-
-**Rules:**
-- **OMIT sections** where the agent reported "All clear" / "nothing" — don't include them at all
-- If an agent sent an urgent Telegram, note it: "(⚡ urgent alert sent)"
-- Keep each section to 2-4 lines max
-- If ALL agents report nothing: **stay completely silent** — send nothing, return "No activity."
-- **IMPORTANT: Only send a Telegram report if there are genuinely actionable updates.** If the only updates are routine status confirmations (e.g., "meal plan set", "repos stable", "cron healthy"), stay silent. {{PARENT_1}} only wants to hear from you when something needs his attention or action.
-
----
-
-## Step 5: Send Report
-
-Send the compiled report via `telegram_send_message` to {{PARENT_1}} (chat_id: `{{TELEGRAM_PARENT_1}}`).
+All remaining agents are domain agents — dispatch them following the checkin-orchestration skill.
 
 ---
 
@@ -127,3 +83,7 @@ Send the compiled report via `telegram_send_message` to {{PARENT_1}} (chat_id: `
 - Each agent should complete within 2-3 minutes
 - The entire orchestration should complete within 5 minutes max
 - If an agent is taking too long, collect available results and note the timeout
+
+## Important: How to Finish
+
+When your orchestration is complete, simply write your final compiled report as text and STOP responding. Do NOT call any tool to signal completion. There is no "finish" or "complete" tool available to you. Just output your summary and stop.
