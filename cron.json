@@ -78,7 +78,7 @@
       "agent": "task-coach"
     },
     {
-      "id": "task-coach-ask-paula",
+      "id": "task-coach-ask-{{PARENT_2}}",
       "schedule": "0 10 * * *",
       "enabled": true,
       "agent": "task-coach",
@@ -107,10 +107,10 @@
     },
     {
       "id": "meal-plan-prompt",
-      "schedule": "0 17 * * 0",
+      "schedule": "0 9 * * 6",
       "enabled": true,
       "agent": "nutrition-chef",
-      "prompt": "Ask {{PARENT_1}} what he wants to cook next week via Telegram. Do NOT suggest recipes or meals — just ask what HE wants on the plan. If he already told you earlier, use set_meal to populate the plan and generate_grocery_list for the shopping list. Check data/family/kitchen-inventory.md for available equipment before confirming any meal that requires specific appliances."
+      "prompt": "Saturday morning meal proposal: proactively send {{PARENT_1}} 3 EASY meal ideas for the upcoming week. Keep each idea short, realistic, and postpartum-survival friendly — under about 30 minutes, minimal dishes, common ingredients, no specialty equipment. Do NOT send full recipes. After he picks meals, use set_meal to populate the plan, generate_grocery_list for the shopping list, and create any prep tasks needed. Check data/family/kitchen-inventory.md before proposing or confirming any meal that needs specific appliances."
     },
     {
       "id": "monday-handoff",
@@ -213,7 +213,7 @@
       "schedule": "0 20 * * 0",
       "enabled": true,
       "agent": "context-auditor",
-      "prompt": "Run FULL weekly context audit. Load memory. Collect ALL files in audit scope: constitution.md, copilot-instructions.md, standing-orders.md, all .github/agents/*.agent.md, all data/agents/*/core.md, all data/agents/*/working.md, cron.json. Measure file sizes and estimate token counts. Launch parallel sub-agents with different models: (1) claude-sonnet-4.5 for contradiction detection, (2) claude-haiku-4.5 for redundancy/bloat analysis, (3) claude-opus-4.5 for skill extraction opportunities. Synthesize findings. Auto-fix safe issues (stale dates, typos, dead references, exact duplicates). Create tasks for complex fixes needing approval. Commit auto-fixes via gh hookflow git-push. Send structured report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) with: files scanned, issues by severity, auto-fixes applied, top findings, token budget per agent. Update memory."
+      "prompt": "Run FULL weekly context audit. Load memory. Collect ALL files in audit scope: constitution.md, copilot-instructions.md, standing-orders.md, all .{{EMPLOYER_PARENT}}/agents/*.agent.md, all data/agents/*/core.md, all data/agents/*/working.md, cron.json. Measure file sizes and estimate token counts. Launch parallel sub-agents with different models: (1) claude-sonnet-4.5 for contradiction detection, (2) claude-haiku-4.5 for redundancy/bloat analysis, (3) claude-opus-4.5 for skill extraction opportunities. Synthesize findings. Auto-fix safe issues (stale dates, typos, dead references, exact duplicates). Create tasks for complex fixes needing approval. Commit auto-fixes via gh hookflow git-push. Send structured report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) with: files scanned, issues by severity, auto-fixes applied, top findings, token budget per agent. Update memory."
     },
     {
       "id": "context-audit-daily",
@@ -248,7 +248,7 @@
       "schedule": "0 12 * * 1-5",
       "enabled": true,
       "agent": "content-creative",
-      "prompt": "Daily {{PERSONAL_DOMAIN}} article promotion on LinkedIn (SEO/backlink workflow). Load your memory. Compute current CT time. Read data/agents/content-creative/article-promo-log.json to see recently promoted articles. Browse the {{PERSONAL_DOMAIN}} article catalog by running: Get-ChildItem 'C:\\Repos\\{{GITHUB_USERNAME}}\\personal-site\\src\\content\\articles' -Filter '*.mdx' | Where-Object { $_.Name -notmatch 'weekly' }. EXCLUDE weekly roundup articles (azure-weekly, github-weekly, vscode-weekly, visual-studio-weekly, copilot-cli-weekly). Pick ONE evergreen article that: (1) was NOT promoted in the last 30 days (check the log), (2) is high-value thought leadership, (3) varies in pillar from yesterday's pick. Read the chosen article's frontmatter and first 50 lines to understand its content. Write a LinkedIn post that: hooks with a bold insight from the article, delivers 2-3 key takeaways in {{PARENT_1}}'s voice, ends with a CTA pointing to the full article on {{PERSONAL_DOMAIN}}. INCLUDE the article URL in the post body (e.g., https://{{PERSONAL_DOMAIN}}/articles/SLUG) — the goal is SEO backlinks so the link MUST be present. Run brand safety check per copilot-brand-safety skill. Generate an AI infographic image via the image-generation skill summarizing the article's key points. Upload image to Late via presign. Schedule the post for the next available LinkedIn slot (target 12:30 PM CT). Update article-promo-log.json with the promoted article slug and date. Send {{PARENT_1}} a preview via Telegram with speak parameter. Update working memory."
+      "prompt": "Daily {{PERSONAL_DOMAIN}} article promotion on LinkedIn (SEO/backlink workflow). Load your memory. Compute current CT time. Read data/agents/content-creative/article-promo-log.json to see recently promoted articles. Browse the {{PERSONAL_DOMAIN}} article catalog by running: Get-ChildItem 'C:\\Repos\\{{GITHUB_USERNAME}}\\htek-dev-site\\src\\content\\articles' -Filter '*.mdx' | Where-Object { $_.Name -notmatch 'weekly' }. EXCLUDE weekly roundup articles (azure-weekly, {{EMPLOYER_PARENT}}-weekly, vscode-weekly, visual-studio-weekly, copilot-cli-weekly). Pick ONE evergreen article that: (1) was NOT promoted in the last 30 days (check the log), (2) is high-value thought leadership, (3) varies in pillar from yesterday's pick. Read the chosen article's frontmatter and first 50 lines to understand its content. Write a LinkedIn post that: hooks with a bold insight from the article, delivers 2-3 key takeaways in {{PARENT_1}}'s voice, ends with a CTA pointing to the full article on {{PERSONAL_DOMAIN}}. INCLUDE the article URL in the post body (e.g., https://{{PERSONAL_DOMAIN}}/articles/SLUG) — the goal is SEO backlinks so the link MUST be present. Run brand safety check per copilot-brand-safety skill. Generate an AI infographic image via the image-generation skill summarizing the article's key points. Upload image to Late via presign. Schedule the post for the next available LinkedIn slot (target 12:30 PM CT). Update article-promo-log.json with the promoted article slug and date. Send {{PARENT_1}} a preview via Telegram with speak parameter. Update working memory."
     },
     {
       "id": "entrepreneur-coach-daily",
@@ -262,14 +262,14 @@
       "schedule": "15 7,12,17 * * *",
       "enabled": true,
       "agent": "platform-manager",
-      "prompt": "Run check_scheduled_triggers from the action-tracker extension.This evaluates schedule-based template triggers (e.g., paula-shower at 7 PM daily). Auto-expand templates with auto_expand=true, suggest others via Telegram to {{PARENT_1}}. Quick check — skip if nothing is due."
+      "prompt": "Run check_scheduled_triggers from the action-tracker extension.This evaluates schedule-based template triggers (e.g., {{PARENT_2}}-shower at 7 PM daily). Auto-expand templates with auto_expand=true, suggest others via Telegram to {{PARENT_1}}. Quick check — skip if nothing is due."
     },
     {
       "id": "template-sync",
       "schedule": "30 21 * * *",
       "enabled": true,
       "agent": "template-sync",
-      "prompt": "Run daily template sync. Diff rocha-family against copilot-home-assistant, strip PII, and create/update sync PR. Follow the progressive sync strategy. Check working memory for current state and what's next. Load pii-mapping.json before processing files."
+      "prompt": "Run daily template sync. Diff {{FAMILY_NAME}}-family against copilot-home-assistant, strip PII, and create/update sync PR. Follow the progressive sync strategy. Check working memory for current state and what's next. Load pii-mapping.json before processing files."
     },
     {
       "id": "work-life-sync",
@@ -309,7 +309,7 @@
     {
       "id": "sms-outreach",
       "schedule": "40 10,16 * * *",
-      "enabled": true,
+      "enabled": false,
       "agent": "sms-outreach",
       "prompt": "Load core.md, working.md, and contacts.json. Check replies via phone-read_sms before any new sends. If {{PARENT_1}} has not approved the campaign, do NOT send SMS; just maintain state and update progress. Once approved, send 5-10 personalized outreach messages from pending contacts, respect opt-outs, track replies, and update working memory."
     },
@@ -321,39 +321,39 @@
       "prompt": "Invoke the agent-task-executor skill. Execute pending agent-surface tasks following the skill protocol: query → filter → prioritize → batch (3-4) → dispatch dedicated agents in parallel → wait for completion → report results. Max 2 batches this cycle. Quality over speed — each task gets a focused agent."
     },
     {
-      "id": "client-site-template-a-checkin-hourly",
+      "id": "carplay-checkin-hourly",
       "schedule": "25 9,13,17 * * *",
       "enabled": true,
-      "agent": "client-site-template-a",
-      "prompt": "Hourly dev check-in — load memory tiers, pick up where you left off, implement the next item in the current phase. Run build, commit code to {{GITHUB_USERNAME}}/client-site-template-a and push. Update working memory with progress. Send brief status update to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter if significant progress was made. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers, status)."
+      "agent": "carplay",
+      "prompt": "Hourly dev check-in — load memory tiers, pick up where you left off, implement the next item in the current phase. Run build, commit code to {{GITHUB_USERNAME}}/carplay-mobile-detail and push. Update working memory with progress. Send brief status update to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter if significant progress was made. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers, status)."
     },
     {
       "id": "article-maintenance-daily",
       "schedule": "0 6 * * *",
       "enabled": true,
       "agent": "article-maintenance",
-      "prompt": "Daily article maintenance run. Load memory tiers first (core.md + working.md). Check where you left off in the tag backlog. Process next batch of 5-10 untagged articles: read each article's content, assign 3-6 tags from the taxonomy in core.md, update frontmatter. Run SEO spot-check on 3-5 random articles (description length, title length, heading structure). Check 2-3 articles for broken internal links (verify linked article slugs exist). Commit all changes to personal-site and push directly to main. Update working.md with progress (articles tagged, issues found, next batch). Only notify {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, use speak param) if something actionable was found (broken links, major SEO gaps, milestone reached). Silent otherwise."
+      "prompt": "Daily article maintenance run. Load memory tiers first (core.md + working.md). Check where you left off in the tag backlog. Process next batch of 5-10 untagged articles: read each article's content, assign 3-6 tags from the taxonomy in core.md, update frontmatter. Run SEO spot-check on 3-5 random articles (description length, title length, heading structure). Check 2-3 articles for broken internal links (verify linked article slugs exist). Commit all changes to htek-dev-site and push directly to main. Update working.md with progress (articles tagged, issues found, next batch). Only notify {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, use speak param) if something actionable was found (broken links, major SEO gaps, milestone reached). Silent otherwise."
     },
     {
-      "id": "client-site-template-b-morning-sprint",
+      "id": "blackout-pickleball-morning-sprint",
       "schedule": "*/30 6-8 * * *",
       "enabled": false,
-      "agent": "client-site-template-b",
-      "prompt": "Aggressive morning sprint — check current project status from memory files (data/agents/client-site-template-b/core.md, working.md, and long-term.md as needed), review the spec (data/specs/client-site-template-b-site-v1.md), check and execute any pending agent-surface tasks relevant to this client site, then continue working on the highest-priority item. Run build before any push, update working memory with progress, and send {{PARENT_1}} a concise Telegram progress update at chat_id {{TELEGRAM_PARENT_1}} ALWAYS using the speak parameter."
+      "agent": "blackout-pickleball",
+      "prompt": "Aggressive morning sprint — check current project status from memory files (data/agents/blackout-pickleball/core.md, working.md, and long-term.md as needed), review the spec (data/specs/blackout-pickleball-site-v1.md), check and execute any pending agent-surface tasks relevant to Blackout Pickleball, then continue working on the highest-priority item. Run build before any push, update working memory with progress, and send {{PARENT_1}} a concise Telegram progress update at chat_id {{TELEGRAM_PARENT_1}} ALWAYS using the speak parameter."
     },
     {
-      "id": "client-site-template-b-daily-checkin",
+      "id": "blackout-pickleball-daily-checkin",
       "schedule": "0 9 * * *",
       "enabled": true,
-      "agent": "client-site-template-b",
-      "prompt": "Daily check-in — check current project status from memory files (data/agents/client-site-template-b/core.md, working.md, and long-term.md as needed), review the spec (data/specs/client-site-template-b-site-v1.md), check and execute any pending agent-surface tasks relevant to this client site, then continue working on the highest-priority item. Run build before any push, update working memory with progress, and send {{PARENT_1}} a concise Telegram progress update at chat_id {{TELEGRAM_PARENT_1}} ALWAYS using the speak parameter. Include a standup format with phase, yesterday's progress, today's plan, blockers, and status."
+      "agent": "blackout-pickleball",
+      "prompt": "Daily check-in — check current project status from memory files (data/agents/blackout-pickleball/core.md, working.md, and long-term.md as needed), review the spec (data/specs/blackout-pickleball-site-v1.md), check and execute any pending agent-surface tasks relevant to Blackout Pickleball, then continue working on the highest-priority item. Run build before any push, update working memory with progress, and send {{PARENT_1}} a concise Telegram progress update at chat_id {{TELEGRAM_PARENT_1}} ALWAYS using the speak parameter. Include a standup format with phase, yesterday's progress, today's plan, blockers, and status."
     },
     {
       "id": "google-ads-daily-metrics",
       "schedule": "0 7 * * *",
       "enabled": true,
       "agent": "google-ads-manager",
-      "prompt": "Daily metrics check and exploration run. Load memory tiers (core.md + working.md). Compute current CT time. Follow the Daily Metrics Check Workflow from your agent definition. Phase 1: Auth check via Playwright — navigate to ads.google.com/aw/campaigns. If not authenticated, notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) and stop. Phase 2: Dismiss ad blocker dialog, collect campaign metrics (impressions, clicks, CTR, conversions, cost). Compare against previous day's snapshot in working.md. Phase 3: Check conversion status for all 5 actions. Check Google tag hit count. Phase 4: Pick ONE unexplored page from the exploration queue in .github/skills/google-ads-playwright/SKILL.md — explore it, document URL, selectors, data available. Update the skill SKILL.md with findings. Phase 5: Update working.md with today's metrics snapshot, exploration progress. Append events.log. Send concise Telegram summary ({{TELEGRAM_PARENT_1}}, speak param) — lead with metrics, then deltas, then exploration findings. Silent if no campaigns and no notable findings."
+      "prompt": "Daily metrics check and exploration run. Load memory tiers (core.md + working.md). Compute current CT time. Follow the Daily Metrics Check Workflow from your agent definition. Phase 1: Auth check via Playwright — navigate to ads.google.com/aw/campaigns. If not authenticated, notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) and stop. Phase 2: Dismiss ad blocker dialog, collect campaign metrics (impressions, clicks, CTR, conversions, cost). Compare against previous day's snapshot in working.md. Phase 3: Check conversion status for all 5 actions. Check Google tag hit count. Phase 4: Pick ONE unexplored page from the exploration queue in .{{EMPLOYER_PARENT}}/skills/google-ads-playwright/SKILL.md — explore it, document URL, selectors, data available. Update the skill SKILL.md with findings. Phase 5: Update working.md with today's metrics snapshot, exploration progress. Append events.log. Send concise Telegram summary ({{TELEGRAM_PARENT_1}}, speak param) — lead with metrics, then deltas, then exploration findings. Silent if no campaigns and no notable findings."
     },
     {
       "id": "google-ads-weekly-report",
@@ -364,10 +364,24 @@
     },
     {
       "id": "content-blitz-hourly",
-      "schedule": "0 * * * *",
+      "schedule": "0 6-21 * * *",
       "enabled": true,
       "agent": "content-blitz",
       "prompt": "CONTENT BLITZ — Hourly State Machine Cycle. Load memory tiers (core.md + working.md). Read the spec at data/specs/content-blitz-v1.md. Compute current CT time and determine campaign day (May 14=Day1 through May 28=Day14). If outside campaign window, disable this cron job and exit. STATE MACHINE: Read pipeline_state from working.md ## Today section. Execute the action for that state, advance to the next state on success, stay on failure (increment retry_count). If retry_count >= 3, alert {{PARENT_1}} and stay. STATES: idle: Pick next idea. (1) Check {{PARENT_1}} idea queue in working.md. (2) Scan {{GITHUB_USERNAME}} repos. (3) Fall back to calendar theme. Set pipeline_state = step1_idea. | step1_idea: Research topic. Write baton fields (today_date, today_day_number, today_theme, today_topic, today_angle, today_outline, today_talking_points, today_examples). Set step1_complete = true, pipeline_state = step2_newsletter. Send morning kickoff to {{PARENT_1}}. | step2_newsletter: Dispatch blog-writer in NEWSLETTER mode (2000+ words, premium deep-dive, brand safety, no employer names). After PR created, set pipeline_state = step2_review. | step2_review: Dispatch code-review on the PR. Quality gate: banned patterns (TODO, TBD, V2, coming soon, placeholder, lorem ipsum), completeness, CTAs, brand safety. If fails, remediate on same branch (max 2 cycles). On pass: set pipeline_state = step2_merge. | step2_merge: Use dev_merge_pr to merge newsletter PR (squash, delete branch). Record today_newsletter_merged = true, step2_complete = true. Set pipeline_state = step3_blueprint. | step3_blueprint: Dispatch blueprint-manager. Fully written content, no stubs. Set pipeline_state = step3_review. | step3_review: Quality gate review + remediation. On pass: set pipeline_state = step3_merge. | step3_merge: Merge blueprint PR via dev_merge_pr. Record today_blueprint_merged = true, step3_complete = true. Set pipeline_state = step4_blog. | step4_blog: Dispatch blog-writer in TEASER mode (800-1200 words, 3 newsletter CTAs, blueprint link). Set pipeline_state = step4_review. | step4_review: Quality gate review + remediation. On pass: set pipeline_state = step4_merge. | step4_merge: Merge blog PR via dev_merge_pr. Record today_blog_merged = true, step4_complete = true. Set pipeline_state = step5_social. | step5_social: Dispatch content-creative (2-4 social posts with images, all link to blog). Set pipeline_state = step5_review. | step5_review: Quality gate review. Schedule posts after pass. Record step5_complete = true. Set pipeline_state = metrics. | metrics: Dispatch content-analytics for performance data. Archive today baton to Day History. Reset Today for next idea. Send daily report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param). Set pipeline_state = idle. AFTER executing: Update pipeline_state and retry_count in working.md. Append action to events.log. CRITICAL: Use dev_merge_pr for all merges. Brand safety check on ALL content. NEVER mention previous employer by name."
+    },
+    {
+      "id": "data-optimizer-sprint",
+      "schedule": "0 8,10,12,14,16,18,20 * * *",
+      "enabled": true,
+      "agent": "data-optimizer",
+      "prompt": "Sprint scan — identify raw-edit patterns on JSON data files. Load memory tiers (core.md + working.md). Use session_store_sql to find recent edit/create tool calls on data/*.json files. Cross-reference with file sizes and multi-agent write patterns. For each candidate found: check if already governed (data/protected-files.json), check if an extension already handles it, assess governance criteria (size, frequency, multi-agent, schema needs). Update working.md with findings. If a strong candidate is found (meets 2+ criteria), write a migration spec to data/specs/. Send brief findings to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) only if actionable candidates found. After 48h of sprint mode (by May 18), disable this cron and switch to daily schedule."
+    },
+    {
+      "id": "linkedin-outreach-hourly",
+      "schedule": "0 9-17 * * 1-5",
+      "enabled": true,
+      "agent": "linkedin-outreach",
+      "prompt": "Load core.md, working.md, and outreach-log.json. Compute current CT time — verify you are within business hours (Mon-Fri 9 AM - 5 PM CT). Check LinkedIn auth via Playwright (fast auth check). Scan inbox for new replies and update outreach-log.json statuses. If a follow-up is due (3-5 business days since last message, max 2 nudges), send it. Otherwise, find ONE new prospect via Exa (exa-web_search_exa with category:people or exa_people_search_exa — agentic DevOps, multi-agent, AI coding space). If Exa unavailable, fall back to web_fetch. Review prospect's LinkedIn profile via Playwright. Personalize a message using core.md templates as starting frameworks — reference their role, company, recent work. Send via Playwright. Log in outreach-log.json. Update working.md counters and pipeline. Append events.log. Only message {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) if notable replies received or auth/rate-limit issues."
     }
   ]
 }
