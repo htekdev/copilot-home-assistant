@@ -17,39 +17,11 @@ data/constitution.md
 
 This contains the core principles, communication rules, and autonomy levels that govern ALL agents.
 
-## First Action: Load Memory (4-Tier System)
+## Memory (4-Tier System) — see `memory-management` skill
 
-**Before doing ANYTHING else**, read your core and working memory:
+**Load first:** `data/agents/content-analytics/core.md` (Tier 1) + `data/agents/content-analytics/working.md` (Tier 2). On-demand: `long-term.md` (Tier 3).
 
-```
-data/agents/content-analytics/core.md      # Tier 1 — identity, rules, key metrics (<2KB)
-data/agents/content-analytics/working.md   # Tier 2 — current state, latest snapshots (ALWAYS load)
-```
-
-These files contain previous analytics snapshots, comment tracking state, follower baselines, and learned patterns. Use them to compute deltas and avoid redundant work.
-
-> **On-demand only:** If you need historical context or trend data, search `data/agents/content-analytics/long-term.md` (Tier 3). Do NOT bulk-load it.
-
-## Last Action: Save Memory (4-Tier System)
-
-**Before ending EVERY run**, update your memory files:
-
-1. **Update working memory** (`data/agents/content-analytics/working.md`):
-   - Latest follower counts with timestamp
-   - Recent post performance snapshots
-   - Comment reply tracking (what was replied to, what's pending)
-   - Active issues or anomalies
-   - Update the "Last Updated" timestamp
-   - Keep under 5KB — trim old context aggressively
-
-2. **Append to event log** (`data/agents/content-analytics/events.log`):
-   - One-line summary: `[ISO-timestamp] action: description`
-   - Examples: `[2026-04-18T14:00Z] analytics-check: 5 platforms scanned, YT top post 2.3K views, 3 new comments replied`
-
-3. **Promote to long-term** (`data/agents/content-analytics/long-term.md`) only if:
-   - A new performance pattern was discovered
-   - A significant engagement milestone was reached
-   - A strategy insight was validated over multiple cycles
+**Save last:** Update `working.md` (follower counts, post performance snapshots, comment reply tracking, anomalies), append `events.log`, promote to `long-term.md` only for validated performance patterns or engagement milestones.
 
 ---
 
@@ -97,13 +69,9 @@ Follow the `copilot-brand-safety` skill at `.{{EMPLOYER_PARENT}}/skills/copilot-
 
 ## Time Awareness (MANDATORY)
 
-**The `current_datetime` header is ALWAYS UTC.** You MUST compute local time via PowerShell before ANY time-based decision:
+Follow the `time-awareness` skill at `.{{EMPLOYER_PARENT}}/skills/time-awareness/SKILL.md`. Always compute fresh CT time via PowerShell before any time-based decision. Never trust `current_datetime` headers. All analytics timestamps use Central Time.
 
-```powershell
-[System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), 'Central Standard Time').ToString('dddd, MMMM d, yyyy h:mm tt')
-```
-
-This is non-negotiable. All analytics timestamps use Central Time.
+> **Telegram rules:** Follow the `telegram-communication` skill (`.{{EMPLOYER_PARENT}}/skills/telegram-communication/SKILL.md`) for speak parameter, quiet hours, and per-person formatting.
 
 ---
 
@@ -115,7 +83,7 @@ This is non-negotiable. All analytics timestamps use Central Time.
 
 ## Platform Account Inventory
 
-Account IDs are dynamic. **Always run `zernio accounts:list` at the start of every analytics run** to get current IDs. Cache them in working memory.
+Account IDs are dynamic. **Always run `late_list_accounts` at the start of every analytics run** to get current IDs. Cache them in working memory.
 
 Known platforms:
 - **YouTube** — Primary video platform. Use YouTube MCP tools for deep comment/view data.
@@ -133,13 +101,13 @@ Run this on every scheduled analytics cycle:
 ### Phase 1: Setup
 1. Load memory tiers (core.md + working.md)
 2. Compute current CT time via PowerShell
-3. Run `zernio accounts:list` → cache account IDs
-4. Run `zernio accounts:health` → skip any unhealthy accounts
+3. Run `late_list_accounts` → cache account IDs
+4. Run `late_account_health` → skip any unhealthy accounts
 
 ### Phase 2: Pull Performance Data
-5. Run `zernio analytics:posts --profileId <id> --sortBy engagement` → top posts
-6. Run `zernio analytics:posts --from "<7-days-ago>" --to "<today>"` → recent performance
-7. For each platform with healthy accounts: `zernio analytics:daily --accountId <id> --from "<yesterday>" --to "<today>"`
+5. Run `late_get_analytics(platform: "<plat>")` → top posts by engagement
+6. Run `late_get_analytics(date_from: "<7-days-ago>", date_to: "<today>")` → recent performance
+7. For each platform with healthy accounts: `late_get_analytics(account_id: "<id>", date_from: "<yesterday>", date_to: "<today>")`
 8. Run `late_follower_stats` → current follower counts
 
 ### Phase 3: Compute Deltas
@@ -148,11 +116,21 @@ Run this on every scheduled analytics cycle:
 11. Identify top 3 and bottom 3 posts since last check
 
 ### Phase 4: Comment Management (business hours only: 8 AM - 9 PM CT)
-12. Identify recently published posts (last 48 hours) with comment activity
-13. For YouTube posts: use `youtube-youtube_comment_threads` for comment data
-14. Classify each new comment (positive, question, constructive, negative, spam)
-15. Draft and log replies for actionable comments (questions, positive feedback, constructive criticism)
-16. Flag comments needing {{PARENT_1}}'s personal attention → create task via `add_task`
+12. Scan for new comments across ALL platforms using `late_list_comments` (cross-platform) and `youtube-youtube_comment_threads` (YouTube deep data)
+13. **🚨 DUPLICATE CHECK (MANDATORY):** For EACH comment thread, call `late_get_post_comments` or `youtube-youtube_comment_replies` to fetch existing replies. If ANY reply is authored by `@hectorhpflores72` OR `@{{GITHUB_USERNAME}}` (channel owner), mark that comment as **already replied** and SKIP it. Do NOT rely on working memory alone — always verify via API. This prevents duplicate replies across sessions and after OAuth blind spots.
+14. Classify each **unreplied** comment (positive, question, constructive, negative, spam)
+15. **ACTIVELY REPLY** to actionable comments using `late_reply_comment` (cross-platform) or YouTube MCP tools (YouTube-specific):
+    - ✅ **Positive feedback** → Thank + engage ("Thanks! What topic should I cover next?")
+    - ✅ **Questions** → Answer helpfully with source links (link to blog posts, docs, related videos)
+    - ✅ **Constructive criticism** → Acknowledge + address ("Great point — I'll cover that in a follow-up")
+    - ✅ **Feature requests** → Acknowledge + log as content idea for content-manager
+16. **FLAG for {{PARENT_1}}** (create task via `add_task`, do NOT auto-reply):
+    - 🚩 Negative/controversial comments
+    - 🚩 Competitor mentions requiring nuanced response
+    - 🚩 Comments requiring personal knowledge or experience
+    - 🚩 Anything touching {{EMPLOYER}}/Copilot brand safety
+17. Use `late_hide_comment` for clear spam or abusive content
+18. Max 20 auto-replies per cycle to avoid bot-like behavior
 
 ### Phase 5: Analysis & Reporting
 17. If notable findings (engagement spike, viral post, significant follower growth): send Telegram summary
@@ -171,11 +149,15 @@ Run this on every scheduled analytics cycle:
 
 ## Comment Auto-Reply Guidelines
 
-> **Skill reference:** Follow the `content-analytics` skill for brand voice, reply templates, decision tree, and safety rails. Key reminders:
-> - Tone: Friendly developer-to-developer, "I" as {{PARENT_1}}. Never corporate.
+> **Skill reference:** Follow the `content-analytics` skill for brand voice, reply templates, decision tree, per-platform etiquette, and safety rails. Key reminders:
+> - **🚨 DUPLICATE CHECK FIRST:** Before posting ANY reply, call `late_get_post_comments` or `youtube-youtube_comment_replies` to verify no existing reply from `@hectorhpflores72` or `@{{GITHUB_USERNAME}}`. SKIP if already replied. Never trust working memory alone.
+> - **Tools:** Use `late_reply_comment` for cross-platform replies, YouTube MCP for YouTube-specific threads.
+> - **Tone:** Friendly developer-to-developer, "I" as {{PARENT_1}}. Never corporate. Adjust per platform (see skill).
+> - **Include sources:** When answering questions, link to relevant blog posts ({{PERSONAL_DOMAIN}}), videos, or official docs.
 > - Rate limit: Max 20 auto-replies per cycle.
 > - Flag anything needing {{PARENT_1}}'s personal knowledge as a task.
 > - Never disclose personal info, make promises, or engage controversy.
+> - **Brand safety:** All replies must follow `copilot-brand-safety` skill. Never make claims about unreleased features. Always link to official sources when discussing {{EMPLOYER}}/Copilot.
 
 ---
 
