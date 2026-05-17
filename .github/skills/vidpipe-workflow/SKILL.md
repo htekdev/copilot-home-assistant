@@ -1,11 +1,11 @@
 ---
 name: vidpipe-workflow
-description: VidPipe record → process → review workflow for a family assistant repo — capture with video bridge, process with pinned VidPipe CLI, expose `vidpipe review` with `@ngrok/ngrok`, and notify {{PARENT_1}} via Telegram. Use when user says "VidPipe workflow", "process recorded video", "vidpipe review", "review link", "video bridge to VidPipe", or "record to review flow".
+description: VidPipe record → process → review workflow for {{FAMILY_NAME}}-family — capture with video bridge, process with pinned VidPipe CLI, expose `vidpipe review` with `@ngrok/ngrok`, and notify {{PARENT_1}} via Telegram. Use when user says "VidPipe workflow", "process recorded video", "vidpipe review", "review link", "video bridge to VidPipe", or "record to review flow".
 ---
 
 # VidPipe Workflow
 
-Canonical workflow for turning a bridge-recorded video into a VidPipe review link {{PARENT_1}} can approve from a phone.
+Canonical {{FAMILY_NAME}}-family workflow for turning a bridge-recorded video into a VidPipe review link {{PARENT_1}} can approve from his phone.
 
 ## Verified Baseline
 
@@ -43,8 +43,10 @@ Before running the workflow, confirm:
 3. **Process with VidPipe**
    - Use the pinned npm package, not the stale global install:
    ```powershell
-   npx vidpipe@1.3.26 process "C:\path\to\video.mp4" --once --output-dir "C:\Repos\{{GITHUB_USERNAME}}\{{FAMILY_NAME}}-family\data\video-pipeline-runs\video-YYYY-MM-DD-NNN\vidpipe" --no-git --progress
+   npx vidpipe@1.3.26 process "C:\path\to\video.mp4" --once --progress
    ```
+   - **DO NOT** use `--output-dir` — let VidPipe use its default `C:\VidPipe\output`. See `vidpipe` skill for rationale.
+   - **DO NOT** use `--no-git` — this flag does not exist and will cause errors.
    - This generates transcripts, edited video, captions, shorts, medium clips, blog/social assets, and `publish-queue` items.
 
 4. **Count outputs**
@@ -53,22 +55,26 @@ Before running the workflow, confirm:
    - Longs = unique `sourceVideo` values where `clipType=video` (usually `0` or `1`)
 
 5. **Start VidPipe review UI**
-   - Run review against the same VidPipe output root:
+   - Run review against the VidPipe default output:
    ```powershell
-   $env:OUTPUT_DIR = "C:\Repos\{{GITHUB_USERNAME}}\{{FAMILY_NAME}}-family\data\video-pipeline-runs\video-YYYY-MM-DD-NNN\vidpipe"
+   $env:OUTPUT_DIR = "C:\VidPipe\output"
    npx vidpipe@1.3.26 review --port 3847
    ```
    - The review UI reads `publish-queue/` inside that `OUTPUT_DIR`
    - If `3847` is busy, VidPipe retries upward automatically
 
 6. **Expose the review UI**
-   - Use `@ngrok/ngrok` from extension code:
+   - The video-bridge extension auto-detects the **ngrok gateway** (`scripts/ngrok-gateway.mjs`).
+   - If the gateway is running (URL in `data/.ngrok-gateway-url`), the review UI is routed through the gateway via `/service/review` — **no separate tunnel needed**.
+   - The direct `/service/<id>` route is stateless, so the recorder (`/service/record`) and review UI (`/service/review`) do not fight over a shared gateway cookie.
+   - If the gateway is NOT running, it falls back to creating a direct `@ngrok/ngrok` tunnel:
    ```js
    const ngrok = await import("@ngrok/ngrok");
    const listener = await ngrok.default.forward({ addr: 3847, authtoken });
    const reviewUrl = listener.url();
    ```
    - Do **not** call `ngrok.exe`
+   - **IMPORTANT**: ngrok free tier only supports ONE tunnel. The gateway approach avoids conflicts by routing both the video bridge (port 3848) and VidPipe review (port 3847) through a single tunnel on port 3850, while keeping them isolated with `/service/record` and `/service/review`.
 
 7. **Notify {{PARENT_1}}**
    - Send Telegram with the public review URL and counts
@@ -108,8 +114,8 @@ npx vidpipe@1.3.26 review --help
 - Use `@ngrok/ngrok` only
 
 ### Local VidPipe repo is broken
-- The local checkout at `C:\Repos\{{GITHUB_USERNAME}}\video-pipeline-repo` may need `npm install`
-- The family-assistant workflow should still use `npx vidpipe@1.3.26`
+- The local checkout at `C:\Repos\{{GITHUB_USERNAME}}\video-auto-note-taker` may need `npm install`
+- The {{FAMILY_NAME}}-family workflow should still use `npx vidpipe@1.3.26`
 
 ### Review UI won’t load
 1. Confirm the VidPipe review child process is running
