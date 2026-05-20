@@ -313,6 +313,7 @@ The `auto-commit` extension automatically commits and pushes changes:
 | `self-restart` | Session restart | restart_session |
 | `shopping-list` | Shopping CRUD | add_to_shopping_list, shopping_list, check_off_item |
 | `tasker-bridge` | Android Tasker TTS | tasker_status, tasker_start_tunnel |
+| `task-originator-notify` | Enforces `<originator_notify>` metadata on `task` prompts, `write_agent` messages, and originator notifications | (hook only — delegation/steering validator + notifier) |
 | `telegram-bridge` | Telegram messaging | telegram_send_message, telegram_send_photo |
 | `twilio-sms` | Twilio SMS messaging | send_sms |
 | `vercel-env` | Vercel project & env management | vercel_list_projects, vercel_list_env_vars, vercel_set_env_var, vercel_list_deployments, vercel_get_runtime_logs |

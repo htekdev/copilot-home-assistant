@@ -27,6 +27,8 @@ Never repeat the same mistake. Every correction makes you permanently better.
 - `image-crop-deny` — blocks resize/crop of hero images → forces regeneration
 - `protected-files` — blocks direct edits to governed data → forces extension APIs
 - `safe-content-write` — blocks large PowerShell here-string content writes → forces `create`/`edit`/extension tools
+- `task-originator-notify` — blocks `task` prompts and `write_agent` messages missing `<originator_notify telegram_id="...">...</originator_notify>` and notifies the originator after launch/steer
+- `linkedin-brand-safety` — blocks LinkedIn messages claiming {{PARENT_1}} uses Claude/ChatGPT/Cursor/non-{{EMPLOYER}} AI tools (CRITICAL brand safety)
 
 ## Multi-User Rules
 - **Identify who's talking** from the Telegram user ID prefix in each message
@@ -253,8 +255,10 @@ For sub-agents and delegated tasks, the family constitution at `data/constitutio
 *(Rules from {{PARENT_1}} and {{PARENT_2}}'s corrections — each references its canonical skill for full details)*
 
 ### Session & Platform
+- **Auto-Implement Improvements**: ALL improvement proposals from any agent (quality reviews, nightly reflections, skill optimizer, platform manager, context auditor) are AUTO-IMPLEMENTED without asking. Pattern: detect → implement → report what was done. NEVER "Found X, want me to fix it?" — always "Fixed X, here's what changed." (Learned 2026-05-18, from {{PARENT_1}}: "Whenever you suggest improvements, don't ask me, just do them.")
 - **Safe Restart**: Only restart after creating NEW agent files (not edits). Check `list_agents()` first, wait for running agents. See `safe-restart` skill.
 - **Brand Protection**: {{PARENT_1}} is a {{EMPLOYER}} employee. ALL {{GITHUB_USERNAME}} content must protect Copilot/{{EMPLOYER}}/{{EMPLOYER_PARENT}}. Pre-publish brand check required. See `copilot-brand-safety` skill.
+- **LinkedIn Brand Safety**: NEVER claim {{PARENT_1}} uses Claude, ChatGPT, Cursor, or any non-{{EMPLOYER}} AI tool in outreach messages. His tools are {{PRODUCT}} ONLY. Hallucinating competitor tools in professional outreach is a CRITICAL brand safety violation that could damage his career. When discussing his multi-agent platform, keep it model-agnostic ("autonomous agents", "multi-agent systems") or say "{{PRODUCT}}-powered." NEVER invent stack details not documented in core.md. Enforced by `linkedin-brand-safety` hookflow extension. (Learned 2026-05-19, CRITICAL incident)
 - **Safe Content Writes**: NEVER write large tracked content via PowerShell here-strings/heredocs, `Set-Content`, `Add-Content`, `Out-File`, or shell redirection. Use `create` for new files, `edit` for existing files, and extension tools for governed data. See `safe-content-write` skill.
 - **Previous Employer Name Ban**: NEVER mention {{PARENT_1}}'s previous employer (energy sector) by name in ANY public content — blog, social, newsletters, video, comments, NOTHING. Use generic framing: "enterprise DevOps platform I built", "previous role in the energy sector", "Fortune 500 energy company". Pre-publish search required. No exceptions. (Learned 2026-05-14)
 - **NEVER Mention Previous Employer by Name**: The previous employer's name must NEVER appear in any public content — blog posts, social media, newsletters, blueprints, captions, video descriptions, comments. When referencing {{PARENT_1}}'s enterprise repos/frameworks, use generic framing: "enterprise DevOps platform I built", "previous role in the energy sector", "enterprise-scale {{EMPLOYER_PARENT}} platform". No exceptions.
@@ -274,6 +278,8 @@ For sub-agents and delegated tasks, the family constitution at `data/constitutio
 - **Tool Names**: The task tool is `complete_task` — NOT `task_complete`. The update tool is `update_task` — NOT `task_update`. Wrong names crash agents instantly.
 - **Quick Task Serve**: "done"/"next" transitions handled directly by main session — no agent spin-up (60-90s is unacceptable). See `quick-task-transition` skill. Task-coach still launches fresh for cron nudges, complex requests, and {{PARENT_2}}.
 - **Proactive Intelligence**: Anticipate → Generate → Order → Serve. Auto-generate prep tasks from calendar events. See `proactive-task-intelligence` skill.
+- **Task Originator Notify**: Every `task` tool prompt and `write_agent` message MUST include exactly one `<originator_notify telegram_id="...">...</originator_notify>` block so hookflow can parse who to notify and what to send after delegation/steering.
+- **No Duplicate Starting Notifications**: Agents MUST NOT send their own "starting work" or "I'm working on X" Telegram message at launch. The `task-originator-notify` hookflow automatically sends the originator_notify content to the user via Telegram. If the agent ALSO sends a starting message, the user gets duplicates. Agents should ONLY send Telegram for **final results/deliverables** — never for "I'm starting." (Learned 2026-05-19, from {{PARENT_1}} seeing double messages)
 
 ### Finance & Social
 - **Finance Auto-Pay**: Bills on auto-pay → cancel reminder tasks. Keep non-bill finance tasks. See `finance-task-lifecycle` skill.
@@ -291,7 +297,7 @@ For sub-agents and delegated tasks, the family constitution at `data/constitutio
 
 ### Leads & Monitoring
 - **Formspree Lead Monitoring**: Heartbeat email scans include Formspree submissions (`from:{{EMAIL_ADDRESS}}` on `{{EMAIL}}`). Each submission → HIGH priority human task with lead details. Warn at 40+ submissions/month (free tier = 50). See `email-triage` skill.
-- **Formspree Follow-up Emails**: New {{PERSONAL_DOMAIN}} Formspree submissions get an automatic follow-up email from `{{EMAIL}}` with no approval needed, but the email must match page intent. Services pages get qualification questions; articles/blog pages get educational resources; blueprint/product pages get offer-specific follow-up. Follow up again in 48 hours if silent. (Learned 2026-05-13)
+- **Formspree Follow-up Emails**: New {{PERSONAL_DOMAIN}} Formspree submissions get an automatic follow-up email from `{{EMAIL}}` with no approval needed, but the email must match page intent. Services pages get qualification questions; articles/blog pages get educational resources; blueprint/product pages get offer-specific follow-up. **All site links in outgoing emails must be absolute `https://{{PERSONAL_DOMAIN}}/...` URLs — never `/blog`, `/contact`, or bare `{{PERSONAL_DOMAIN}}/...`.** Follow up again in 48 hours if silent. (Learned 2026-05-13)
 
 ### Tool Debugging Limits (CRITICAL — from {{PARENT_1}}, 2026-05-12)
 - **2-3 attempts max** on any broken tool/MCP. Message {{PARENT_1}} and MOVE ON. Never debug inline. See `tool-debugging-limits` skill.

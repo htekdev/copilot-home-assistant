@@ -1,0 +1,116 @@
+name: Require task or write_agent originator notify
+description: Blocks task/write_agent calls unless they contain a valid originator_notify tag. On success, sends the parsed message to the originator via Telegram Bot API.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [task, write_agent]
+blocking: true
+env:
+  TOOL_NAME: ${{ event.tool.name }}
+  TASK_PROMPT_JSON: ${{ toJSON(event.tool.args.prompt) }}
+  WRITE_AGENT_MESSAGE_JSON: ${{ toJSON(event.tool.args.message) }}
+steps:
+  - name: Validate and send originator notification
+    run: |
+      function Fail($reason, $sourceLabel) {
+        $message = @(
+          '🚫 BLOCKED: Every task prompt and write_agent message must include exactly one parser-friendly originator notification block.',
+          '',
+          "Reason: $reason",
+          '',
+          "Add this block to the $sourceLabel`:",
+          '<originator_notify telegram_id="{{TELEGRAM_PARENT_1}}">',
+          'Status message to send to the originator about what this delegated agent is doing',
+          '</originator_notify>'
+        ) -join "`n"
+
+        Write-Error $message
+        exit 1
+      }
+
+      # --- PARSE ---
+      $sourceLabel = if ($env:TOOL_NAME -eq 'write_agent') { 'write_agent message' } else { 'task prompt' }
+      $textJson = if ($env:TOOL_NAME -eq 'write_agent') { $env:WRITE_AGENT_MESSAGE_JSON } else { $env:TASK_PROMPT_JSON }
+      $text = $textJson | ConvertFrom-Json
+
+      if ([string]::IsNullOrWhiteSpace($text)) {
+        Fail "$sourceLabel is empty or missing." $sourceLabel
+      }
+
+      $pattern = '<originator_notify\b(?<attrs>[^>]*)>(?<message>[\s\S]*?)</originator_notify>'
+      $matches = [regex]::Matches(
+        $text,
+        $pattern,
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+      )
+
+      if ($matches.Count -eq 0) {
+        Fail "Missing <originator_notify> block in the $sourceLabel." $sourceLabel
+      }
+
+      if ($matches.Count -gt 1) {
+        Fail 'Found multiple <originator_notify> blocks. Include exactly one.' $sourceLabel
+      }
+
+      $attrs = $matches[0].Groups['attrs'].Value
+      $telegramIdMatch = [regex]::Match(
+        $attrs,
+        '\btelegram_id=(["'"'"'])(?<id>\d+)\1',
+        [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+      )
+
+      if (-not $telegramIdMatch.Success) {
+        Fail 'The <originator_notify> block is missing a numeric telegram_id attribute.' $sourceLabel
+      }
+
+      $notifyMessage = $matches[0].Groups['message'].Value.Trim()
+      if ([string]::IsNullOrWhiteSpace($notifyMessage)) {
+        Fail 'The <originator_notify> block must include a non-empty notification message.' $sourceLabel
+      }
+
+      $telegramId = $telegramIdMatch.Groups['id'].Value
+      Write-Host "Validated originator_notify for Telegram ID $telegramId on $($env:TOOL_NAME)."
+
+      # --- SEND TELEGRAM ---
+      $envFile = Join-Path $PWD '.env'
+      $botToken = $null
+      if (Test-Path $envFile) {
+        foreach ($line in Get-Content $envFile) {
+          if ($line -match '^\s*TELEGRAM_BOT_TOKEN\s*=\s*(.+)$') {
+            $botToken = $Matches[1].Trim().Trim('"').Trim("'")
+            break
+          }
+        }
+      }
+      if (-not $botToken) { $botToken = $env:TELEGRAM_BOT_TOKEN }
+
+      if (-not $botToken) {
+        Write-Host "WARNING: No TELEGRAM_BOT_TOKEN found. Skipping send."
+        exit 0
+      }
+
+      # Build message text — add TTS prefix for Parent 1
+      $PARENT_1_ID = '{{TELEGRAM_PARENT_1}}'
+      $sendText = if ($telegramId -eq $PARENT_1_ID) {
+        $speakText = ($notifyMessage -replace '<[^>]+>', ' ' -replace '\s+', ' ').Trim()
+        if ($speakText.Length -gt 150) { $speakText = $speakText.Substring(0, 147) + '...' }
+        "SPEAK: Agent launched. $speakText`n`n$notifyMessage"
+      } else {
+        $notifyMessage
+      }
+
+      $body = @{
+        chat_id    = $telegramId
+        text       = $sendText
+        parse_mode = 'HTML'
+      } | ConvertTo-Json -Depth 3
+
+      $apiUrl = "https://api.telegram.org/bot$botToken/sendMessage"
+      try {
+        $response = Invoke-RestMethod -Uri $apiUrl -Method Post -ContentType 'application/json' -Body $body -ErrorAction Stop
+        Write-Host "Telegram notification sent to $telegramId."
+      } catch {
+        Write-Host "WARNING: Telegram send failed: $($_.Exception.Message). Continuing anyway."
+      }
+
+      exit 0

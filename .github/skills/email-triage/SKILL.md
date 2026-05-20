@@ -50,7 +50,7 @@ For EACH email, call `gmail_read(messageId)` and classify:
 | **Receipts** | Log expense if identifiable. Note as auto-handled. |
 | **Newsletters/Marketing** | Tally count for summary. Don't process individually. |
 | **FYI** | Skip silently UNLESS relevant to an existing task or watch item. |
-| **Formspree Leads** | `add_task(title: "Review lead: [name]", category: "general", assignee: "{{PARENT_1}}", priority: "high", surface: "human", notes: "website form submission — Name: [name], Email: [email], Message: [msg], Source: [_source]")`. Check for 40+/month to warn about Formspree free tier (50/month limit). |
+| **Formspree Leads** | `add_task(title: "Review lead: [name]", category: "general", assignee: "{{PARENT_1}}", priority: "high", surface: "human", notes: "website form submission — Name: [name], Email: [email], Message: [msg], Source: [_source]")` **AND** send an automatic follow-up email from `{{EMAIL}}` routed by page intent. Services pages get qualification questions + consulting link; articles/blog pages get educational resources; blueprint/product pages get offer-specific follow-up. **All site links in email bodies must be absolute `https://{{PERSONAL_DOMAIN}}/...` URLs — never `/blog`, `/contact`, or bare `{{PERSONAL_DOMAIN}}/...`.** No approval needed. Check for 40+/month to warn about Formspree free tier (50/month limit). |
 
 ## Step 4: Batch Notification
 
