@@ -58,8 +58,11 @@ This is not optional. This is not "nice to have." This is the CORE governance me
 | `dev-guard` | preToolUse + postToolUse | Blocks raw git/hookflow commands → forces dev-workflow tools |
 | `image-crop-deny` | preToolUse + postToolUse | Blocks resize/crop of hero images → forces regeneration at correct dimensions |
 | `protected-files` | preToolUse | Blocks direct edits to governed data files → forces extension tool APIs |
+| `task-originator-notify` | preToolUse + postToolUse | Blocks `task` prompts and `write_agent` messages missing `<originator_notify telegram_id="...">...</originator_notify>` and notifies the originator after launch/steer |
 | `auto-commit` | postToolUse | Auto-commits changes after extension tool mutations |
 | `dev-workflow` | tools | Forces git operations through controlled, auditable tool interfaces |
+| `safe-content-write` | postToolUse + onSessionStart | Advisory: detects large PowerShell here-string writes → forces `create`/`edit`/extension tools |
+| `linkedin-brand-safety` | postToolUse + onSessionStart | Flags LinkedIn messages claiming {{PARENT_1}} uses Claude/ChatGPT/Cursor/non-{{EMPLOYER}} AI tools |
 
 ---
 

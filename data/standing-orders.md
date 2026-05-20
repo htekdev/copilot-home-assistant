@@ -188,6 +188,8 @@ Every agent that discovers something needing human action MUST create a task via
 
 **{{PARENT_1}}'s mandate:** "Sub-agents launched via task tool do NOT inherit hooks.json or extension onPreToolUse hooks. The only reliable governance is prompt-level enforcement."
 
+**Task-originator-notify mandate:** Every `task` tool prompt and `write_agent` message MUST include exactly one `<originator_notify telegram_id="...">...</originator_notify>` block so the parent session can deterministically notify the originator when work is delegated or an existing agent is steered.
+
 **The rules (ALL agents, ALL contexts):**
 - ❌ NEVER: `git commit`, `git push`, `git add`, `git checkout`, `git branch`, `git merge`, `git rebase`, `git reset`, `git stash`, `git tag`, `git cherry-pick`, `git worktree`, `git clone`
 - ❌ NEVER: `gh pr create`, `gh pr merge`
@@ -531,5 +533,8 @@ Keep it concise — use HTML formatting for Telegram.
 - dev-guard — blocks raw git commands → forces dev-workflow tools
 - image-crop-deny — blocks resize/crop of hero images → forces regeneration
 - protected-files — blocks direct edits to governed data → forces extension APIs
+- safe-content-write — detects large PowerShell here-string content writes → forces `create`/`edit`/extension tools
+- task-originator-notify — blocks `task` prompts and `write_agent` messages missing `<originator_notify telegram_id="...">...</originator_notify>` and notifies the originator after launch/steer
+- linkedin-brand-safety — flags LinkedIn messages claiming {{PARENT_1}} uses Claude/ChatGPT/Cursor/non-{{EMPLOYER}} AI tools
 
 **Skill reference:** .github/skills/hookflow-governance/SKILL.md — full patterns, templates, registry.
