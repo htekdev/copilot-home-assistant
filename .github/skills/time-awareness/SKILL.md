@@ -1,15 +1,15 @@
 ---
 name: time-awareness
-description: Central Time awareness and date computation for the home assistant platform — PowerShell CT time, relative date resolution, quiet hours, and time-based decision making. Use when user says "what time", "compute time", "quiet hours", "time awareness", "date calculation", "leave by time", "current time", or any time-sensitive operation.
+description: Central Time awareness and date computation for the {{FAMILY_NAME}} family platform — PowerShell CT time, relative date resolution, quiet hours, and time-based decision making. Use when user says "what time", "compute time", "quiet hours", "time awareness", "date calculation", "leave by time", "current time", or any time-sensitive operation.
 ---
 
 # Time Awareness Skill
 
-Canonical patterns for time computation, date resolution, and time-based decisions across all agents in the home assistant platform.
+Canonical patterns for time computation, date resolution, and time-based decisions across all agents in the {{FAMILY_NAME}} family platform.
 
 ## Why This Exists
 
-The platform runs on Central Time (or your configured timezone). Agents MUST compute time fresh every run — never trust cached or passed-in time values. This skill provides the single source of truth for how time is handled.
+The platform runs on Central Time ({{TIMEZONE}}). Agents MUST compute time fresh every run — never trust cached or passed-in time values. This skill provides the single source of truth for how time is handled.
 
 ## Rule 1: ALWAYS Compute Fresh (NEVER Trust Passed-In Time)
 
@@ -42,7 +42,38 @@ $targetDate = $today.AddDays($daysUntil)
 Write-Output "$($targetDate.ToString('dddd, MMMM d, yyyy'))"
 ```
 
-**Always state the result explicitly:** "Today is Wednesday, May 6. This Friday = Friday, May 8. ✅"
+### Rule 2A: MANDATORY Day-of-Week Verification Before Calendar Creation
+
+**HARD RULE:** Never call `gcal_create_event` from a relative reference until you separately verify that the computed date's `DayOfWeek` matches the user's stated weekday.
+
+Verification template:
+
+```powershell
+(Get-Date '2026-05-24').DayOfWeek
+```
+
+Full calendar-safe pattern:
+
+```powershell
+$today = [System.TimeZoneInfo]::ConvertTimeBySystemTimeZoneId((Get-Date), 'Central Standard Time')
+$targetDay = [System.DayOfWeek]::Saturday
+$daysUntil = (([int]$targetDay - [int]$today.DayOfWeek + 7) % 7)
+if ($daysUntil -eq 0) { $daysUntil = 7 }
+$targetDate = $today.AddDays($daysUntil)
+$verifiedDay = (Get-Date $targetDate.ToString('yyyy-MM-dd')).DayOfWeek
+if ($verifiedDay -ne $targetDay) {
+  throw "Day-of-week mismatch: expected $targetDay but computed $verifiedDay for $($targetDate.ToString('yyyy-MM-dd'))"
+}
+Write-Output "Verified: $($targetDate.ToString('dddd, MMMM d, yyyy')) ✅"
+```
+
+If the prompt is ambiguous (e.g. "Saturday or Sunday", "I think", "maybe confirm"), STOP. Clarify first. Do not create the event.
+
+If the weekday intent and numeric date conflict (e.g. the prompt says "Saturday, May 24" but `(Get-Date '2026-05-24').DayOfWeek` returns `Sunday`), do **NOT** force the event onto the numeric date. Fix the date first or clarify before creating anything.
+
+**Always state the result explicitly:** "Today is Wednesday, May 6. This Friday = Friday, May 8. Verified with DayOfWeek ✅"
+
+> **Hookflow enforcement:** The `calendar-date-guard` extension (`.{{EMPLOYER_PARENT}}/extensions/calendar-date-guard/extension.mjs`) deterministically blocks `gcal_create_event` when the computed date's weekday mismatches user prompt intent or when intent is ambiguous. This is the last line of defense — always verify BEFORE relying on the guard.
 
 ## Rule 3: Quiet Hours Enforcement
 
@@ -109,6 +140,8 @@ Leave-by = Event Start - Drive Time - 15 min buffer
 ## Anti-Patterns (NEVER Do These)
 
 - ❌ Assume dates without computing them via PowerShell
+- ❌ Create a calendar event from a relative weekday without separately verifying `(Get-Date '<yyyy-mm-dd>').DayOfWeek`
+- ❌ Proceed when the prompt says things like "Saturday or Sunday", "I think", or "maybe confirm" — that is ambiguity, not permission to guess
 - ❌ Use UTC `current_datetime` header as local time
 - ❌ Trust time values from dispatch messages or other agents
 - ❌ Calculate leave-by time without confirmed starting location
