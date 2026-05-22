@@ -1,0 +1,69 @@
+name: Block worklog narration in Telegram messages
+description: Blocks telegram_send_message when message or speak contains internal process narration phrases. Agents must communicate results, not their thinking process.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [telegram_send_message]
+blocking: true
+env:
+  MESSAGE_JSON: ${{ toJSON(event.tool.args.message) }}
+  SPEAK_JSON: ${{ toJSON(event.tool.args.speak) }}
+steps:
+  - name: Check for worklog narration patterns
+    run: |
+      $patterns = @(
+        '\b(now let me|let me now)\b',
+        '\b(i''ll now proceed|i will now proceed)\b',
+        '\bwaiting for (completion|the)\b',
+        '\b(let me check|let me verify|let me look)\b',
+        '\bi''m going to\b',
+        '\b(first,? i''ll|next,? i''ll|then i''ll)\b',
+        '\b(calling|using|running) tool\b',
+        '\btool_search_tool_regex\b',
+        '\b(processing|analyzing)\.\.\.',
+        '\bhere''s what i found after\b'
+      )
+
+      function Test-Worklog([string]$text) {
+        if ([string]::IsNullOrWhiteSpace($text)) { return $null }
+        foreach ($p in $patterns) {
+          $match = [regex]::Match($text, $p, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+          if ($match.Success) { return $match.Value }
+        }
+        return $null
+      }
+
+      $message = $null
+      $speak = $null
+
+      if (-not [string]::IsNullOrWhiteSpace($env:MESSAGE_JSON)) {
+        try { $message = $env:MESSAGE_JSON | ConvertFrom-Json } catch {}
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:SPEAK_JSON)) {
+        try { $speak = $env:SPEAK_JSON | ConvertFrom-Json } catch {}
+      }
+
+      $msgMatch = Test-Worklog $message
+      $speakMatch = Test-Worklog $speak
+
+      if ($msgMatch -or $speakMatch) {
+        $matched = if ($msgMatch) { $msgMatch } else { $speakMatch }
+        $lines = @(
+          "🚫 BLOCKED: Your Telegram message contains internal worklog/process narration.",
+          "",
+          "Matched phrase: `"$matched`"",
+          "",
+          "Rewrite it to be result-first, concise, and professional. Remove phrases like:",
+          "- 'Let me check...'",
+          "- 'Now I'll proceed...'",
+          "- 'Waiting for completion...'",
+          "- 'Running tool...'",
+          "",
+          "Just deliver the information directly. Results first, always."
+        )
+        Write-Error ($lines -join "`n")
+        exit 1
+      }
+
+      Write-Host 'No worklog narration detected; allowing Telegram send.'
+      exit 0
