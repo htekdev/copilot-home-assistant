@@ -1,0 +1,130 @@
+name: Require Vercel preview with {{{{EMPLOYER_PARENT}}_USERNAME}} PR share
+description: Blocks Telegram messages that reference an {{{{EMPLOYER_PARENT}}_USERNAME}} PR unless the same message includes a Vercel preview URL.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [telegram_send_message]
+blocking: true
+env:
+  MESSAGE_JSON: ${{ toJSON(event.tool.args.message) }}
+steps:
+  - name: Require preview URL for PR shares
+    run: |
+      function Find-FirstMatch([string]$Text, [string[]]$Patterns) {
+        if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+
+        foreach ($pattern in $Patterns) {
+          $match = [regex]::Match(
+            $Text,
+            $pattern,
+            [System.Text.RegularExpressions.RegexOptions]::IgnoreCase
+          )
+          if ($match.Success) {
+            return $match.Value
+          }
+        }
+
+        return $null
+      }
+
+      function Deny([string]$Reason, [string]$PrMatch, [string]$PreviewUrl = '') {
+        $lines = @(
+          '🚫 BLOCKED: This Telegram message mentions an {{{{EMPLOYER_PARENT}}_USERNAME}} PR but does not include a valid Vercel preview URL.',
+          '',
+          "Reason: $Reason",
+          "Matched PR reference: $PrMatch"
+        )
+
+        if (-not [string]::IsNullOrWhiteSpace($PreviewUrl)) {
+          $lines += "Preview URL checked: $PreviewUrl"
+        }
+
+        $lines += @(
+          '',
+          'Include both of these in the same Telegram message:',
+          '• the PR reference',
+          '• a reachable Vercel preview URL (*.vercel.app)',
+          '',
+          'Governance rule: {{PARENT_1}} must be able to open the PR and preview from one message.'
+        )
+
+        Write-Error ($lines -join "`n")
+        exit 1
+      }
+
+      function Normalize-PreviewUrl([string]$PreviewUrl) {
+        if ([string]::IsNullOrWhiteSpace($PreviewUrl)) { return $null }
+        if ($PreviewUrl -match '^https?://') { return $PreviewUrl }
+        return "https://$PreviewUrl"
+      }
+
+      function Test-ReachablePreview([string]$PreviewUrl) {
+        if ([string]::IsNullOrWhiteSpace($PreviewUrl)) { return $false }
+
+        try {
+          $response = Invoke-WebRequest -Uri $PreviewUrl -Method Head -MaximumRedirection 5 -TimeoutSec 10 -ErrorAction Stop
+          return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
+        } catch {
+          try {
+            $response = Invoke-WebRequest -Uri $PreviewUrl -Method Get -MaximumRedirection 5 -TimeoutSec 10 -ErrorAction Stop
+            return ($response.StatusCode -ge 200 -and $response.StatusCode -lt 400)
+          } catch {
+            return $false
+          }
+        }
+      }
+
+      $message = $env:MESSAGE_JSON | ConvertFrom-Json
+      if ([string]::IsNullOrWhiteSpace($message)) {
+        exit 0
+      }
+
+      $directPrPatterns = @(
+        '{{EMPLOYER_PARENT}}\.com\/{{{{EMPLOYER_PARENT}}_USERNAME}}\/[^\/\s]+\/pull\/\d+',
+        '{{{{EMPLOYER_PARENT}}_USERNAME}}\/[^#\s]+#\d+',
+        '{{{{EMPLOYER_PARENT}}_USERNAME}}[^\r\n.]{0,120}\bPR\s*#\d+\b',
+        '{{{{EMPLOYER_PARENT}}_USERNAME}}[^\r\n.]{0,120}\bpull(?:\s+request)?(?:\s*#\d+|\/\d+)\b',
+        '{{EMPLOYER_PARENT}}\.com\/{{{{EMPLOYER_PARENT}}_USERNAME}}\/[^\/\s]+[^\r\n.]{0,120}\bPR\s*#\d+\b'
+      )
+      $genericPrPatterns = @(
+        '\bPR\s*#\d+\b',
+        '\bpull\/\d+\b',
+        '\bpull\s+request\s*#\d+\b'
+      )
+      ${{{{EMPLOYER_PARENT}}_USERNAME}}ContextPatterns = @(
+        '\b{{{{EMPLOYER_PARENT}}_USERNAME}}\b',
+        '\bhtek\.dev\b',
+        '{{EMPLOYER_PARENT}}\.com\/{{{{EMPLOYER_PARENT}}_USERNAME}}\/'
+      )
+      $vercelPatterns = @(
+        'https?:\/\/[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app(?:\/\S*)?',
+        'https?:\/\/vercel\.app\/\S+',
+        '\b[a-z0-9-]+(?:-[a-z0-9-]+)*\.vercel\.app(?:\/\S*)?'
+      )
+
+      $prMatch = Find-FirstMatch $message $directPrPatterns
+      if (-not $prMatch) {
+        $genericPrMatch = Find-FirstMatch $message $genericPrPatterns
+        $contextMatch = Find-FirstMatch $message ${{{{EMPLOYER_PARENT}}_USERNAME}}ContextPatterns
+        if ($genericPrMatch -and $contextMatch) {
+          $prMatch = "$genericPrMatch (context: $contextMatch)"
+        }
+      }
+
+      if (-not $prMatch) {
+        Write-Host 'No {{{{EMPLOYER_PARENT}}_USERNAME}} PR reference found; allowing Telegram send.'
+        exit 0
+      }
+
+      $vercelMatch = Find-FirstMatch $message $vercelPatterns
+      if (-not $vercelMatch) {
+        Deny 'No *.vercel.app preview URL was found in the message.' $prMatch
+      }
+
+      $previewUrl = Normalize-PreviewUrl $vercelMatch
+      if (-not (Test-ReachablePreview $previewUrl)) {
+        Deny 'The Vercel preview URL did not resolve successfully.' $prMatch $previewUrl
+      }
+
+      Write-Host "Validated PR share with reachable Vercel preview: $previewUrl"
+      exit 0
