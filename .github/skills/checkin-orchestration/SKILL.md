@@ -24,7 +24,7 @@ Discover → Filter → Dispatch (parallel) → Collect → Compile → Notify (
 ## Step 1: Discover Domain Agents
 
 ```
-glob(pattern: ".github/agents/*.agent.md")
+glob(pattern: ".{{EMPLOYER_PARENT}}/agents/*.agent.md")
 ```
 
 Parse agent names from filenames (strip `.agent.md` suffix).
@@ -137,6 +137,18 @@ Before dispatching, check time:
 - Each agent should complete within 2-3 minutes
 - Full orchestration: ≤5 minutes total
 - If an agent exceeds 3 minutes, collect available results and note the timeout
+
+## Early-Termination (Recovery Mode)
+
+When an orchestrator fires more frequently than normal (rapid cycles during recovery/backlog), track consecutive "all clear" results to avoid resource waste:
+
+1. **Track state** in a JSON file (e.g., `data/agents/{orchestrator}/recovery-state.json`) with `consecutive_all_clear` counter, `recovery_active` flag, and `last_cycle_time`.
+2. **Detect rapid cycling**: If time since last cycle < 90 minutes, you're in recovery mode.
+3. **Count all-clears**: After collection, if ALL agents report nothing → increment counter. Any updates → reset to 0.
+4. **Terminate at threshold**: If `consecutive_all_clear >= 3` AND in recovery mode → skip dispatch entirely, return "Recovery complete."
+5. **Normal cycles always run**: 2+ hour gaps between cycles = normal schedule, always dispatch regardless of counter.
+
+This prevents the anti-pattern of N rapid cycles where N-3 return "all clear" — saving tokens, sub-agent launches, and orchestrator overhead.
 
 ## Anti-Patterns
 
