@@ -4,10 +4,21 @@ description: >
   Hookflow governance philosophy and creation patterns — every behavioral correction becomes a deterministic hookflow rule.
   Use when: "create hook", "hookflow rule", "enforce behavior", "block pattern", "governance hook",
   "prevent mistake", "deterministic enforcement", "preToolUse deny", "postToolUse advisory",
-  "hookflow audit", "new extension hook", "behavioral correction"
+  "hookflow audit", "new YAML hookflow", "behavioral correction", "hookflow-js"
 ---
 
 # Hookflow Governance — The Platform's Immune System
+
+## What “Hookflow” Means in This Repo
+
+**Hookflows here mean the custom `hookflow-js` governance engine** — not Copilot CLI extensions.
+
+- **Primary hookflow files live under** `.{{EMPLOYER_PARENT}}/hookflows/`
+- **Markdown hookflows** (`.md`) handle simple static block/advise rules
+- **YAML hookflows** (`.yml`) handle conditional parsing, regex extraction, and scripted validation
+- **Extensions are separate**: they provide tools, management helpers, background jobs, and defense-in-depth, but they are **not** the primary governance layer
+
+When {{PARENT_1}} says "use a hookflow," default to the custom `hookflow-js` files under `.{{EMPLOYER_PARENT}}/hookflows/` unless the requirement is truly impossible to express there.
 
 ## Philosophy
 
@@ -16,8 +27,8 @@ description: >
 This is not optional. This is not "nice to have." This is the CORE governance mechanism of the platform. Instructions can be ignored. Memories can be forgotten. Skills can be skipped. But **hookflow rules execute deterministically** — they cannot be bypassed by the AI, they fire on every tool call, and they provide immediate feedback.
 
 **The hierarchy of enforcement:**
-1. **Hookflow rules** (deterministic, cannot be bypassed) ← STRONGEST
-2. **Extension tools** (force agents through controlled interfaces)
+1. **Hookflow-js rules in `.{{EMPLOYER_PARENT}}/hookflows/`** (deterministic, cannot be bypassed) ← STRONGEST
+2. **Extension tools and extension management layers** (controlled interfaces, privileged writers, defense-in-depth)
 3. **copilot-instructions.md** (read at session start, can drift)
 4. **Agent instructions** (per-agent, session-scoped)
 5. **Skills** (invoked on demand, can be skipped)
@@ -45,7 +56,7 @@ This is not optional. This is not "nice to have." This is the CORE governance me
 
 ### onSessionStart (Context Injection)
 - **Purpose:** Inject governance rules at session start
-- **When to use:** Declare which rules this extension enforces
+- **When to use:** Declare which rules the governance layer enforces
 - **Return:** `{ additionalContext: "..." }`
 - **Effect:** Agent sees the rules in its first context window
 
@@ -53,16 +64,24 @@ This is not optional. This is not "nice to have." This is the CORE governance me
 
 ## Current Hookflow Rules (Platform Registry)
 
-| Extension | Hook Type | What It Enforces |
-|-----------|-----------|-----------------|
+| Hookflow / Extension | Hook Type | What It Enforces |
+|----------------------|-----------|-----------------|
 | `dev-guard` | preToolUse + postToolUse | Blocks raw git/hookflow commands → forces dev-workflow tools |
 | `image-crop-deny` | preToolUse + postToolUse | Blocks resize/crop of hero images → forces regeneration at correct dimensions |
 | `protected-files` | preToolUse | Blocks direct edits to governed data files → forces extension tool APIs |
 | `task-originator-notify` | preToolUse + postToolUse | Blocks `task` prompts and `write_agent` messages missing `<originator_notify telegram_id="...">...</originator_notify>` and notifies the originator after launch/steer |
+| `tool-fishing-guard` | preToolUse + postToolUse | Blocks tool_search_tool_regex for standard tools (call directly) and MCP tools (main-session-only, use web_fetch in sub-agents) |
 | `auto-commit` | postToolUse | Auto-commits changes after extension tool mutations |
 | `dev-workflow` | tools | Forces git operations through controlled, auditable tool interfaces |
-| `safe-content-write` | postToolUse + onSessionStart | Advisory: detects large PowerShell here-string writes → forces `create`/`edit`/extension tools |
-| `linkedin-brand-safety` | postToolUse + onSessionStart | Flags LinkedIn messages claiming {{PARENT_1}} uses Claude/ChatGPT/Cursor/non-{{EMPLOYER}} AI tools |
+| `safe-content-write` | preToolUse + postToolUse + onSessionStart | Blocks large PowerShell here-string writes → forces `create`/`edit`/extension tools |
+| `block-worklog-narration` | preToolUse (YAML hookflow) | Blocks Telegram messages containing internal worklog/process narration → forces result-first communication |
+| `linkedin-brand-safety` | postToolUse + onSessionStart | Blocks LinkedIn messages claiming {{PARENT_1}} uses Claude/ChatGPT/Cursor/non-{{EMPLOYER}} AI tools |
+| `require-vercel-link-with-pr` | preToolUse (YAML hookflow) | Blocks Telegram messages mentioning {{{{EMPLOYER_PARENT}}_USERNAME}} PRs without a Vercel preview URL |
+| `calendar-date-guard` | preToolUse + onUserPromptSubmitted | Blocks gcal_create_event when computed weekday mismatches user intent or intent is ambiguous |
+| `block-db-powershell` | preToolUse (MD hookflow) | Blocks direct SQLite/database access in powershell → forces extension tools |
+| `block-sync-task` | preToolUse (MD hookflow) | Blocks `task` tool calls missing background mode → forces async dispatch |
+| `block-web-fetch` | preToolUse (MD hookflow) | Blocks web_fetch/web_search in main session → forces Exa/Perplexity MCP tools |
+| `enforce-image-gen-tool` | preToolUse (MD hookflow) | Blocks raw Python image generation → forces `generate_image` extension tool |
 
 ---
 
@@ -98,12 +117,39 @@ function checkCommand(cmd) {
 - Reference the governance principle
 
 ### Step 5: Place the Hook
-- New extension in `.github/extensions/{name}/extension.mjs` for new domains
-- Add to existing extension if the rule belongs to that domain (e.g., git rules → dev-guard)
+- Markdown hookflow in `.{{EMPLOYER_PARENT}}/hookflows/{name}.md` for simple static policy rules
+- YAML hookflow in `.{{EMPLOYER_PARENT}}/hookflows/{name}.yml` for conditional logic, regex extraction, and scripted validation
+- Extension in `.{{EMPLOYER_PARENT}}/extensions/{name}/extension.mjs` only when hookflows cannot express the rule (state, APIs, timers, or new tools)
+- Prefer migrating broken extension deny hooks to YAML hookflows when the policy is just request validation
 
 ---
 
-## Template: New Hookflow Extension
+## Template: New YAML Hookflow (PRIMARY path)
+
+```yaml
+name: Require condition X
+description: Blocks tool Y unless condition Z is present.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [tool_name]
+blocking: true
+env:
+  ARG_JSON: ${{ toJSON(event.tool.args.some_arg) }}
+steps:
+  - name: Validate condition
+    run: |
+      $value = $env:ARG_JSON | ConvertFrom-Json
+      if ([string]::IsNullOrWhiteSpace($value)) {
+        Write-Error '🚫 BLOCKED: Explain what is missing and how to fix it.'
+        exit 1
+      }
+
+      # Add regex parsing, conditional logic, and optional network checks here.
+      exit 0
+```
+
+## Template: New Extension Hook (only when hookflows are insufficient)
 
 ```javascript
 /**
@@ -113,7 +159,7 @@ function checkCommand(cmd) {
  *
  * Hookflow Governance: This rule was created because {the specific mistake/correction}.
  */
-import { joinSession } from "@github/copilot-sdk/extension";
+import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
 
 // ── Detection patterns ──────────────────────────────────────────────────────
 
@@ -195,12 +241,14 @@ When reviewing platform behavior (nightly reflection, context audit, skill optim
 
 ---
 
-## SDK Limitations (as of v1.0.47)
+## Runtime Notes & Limitations
 
-- `onPreToolUse` is NOT dispatched to extension `joinSession` hooks by the runtime — it's defined but inactive. The `hooks.json` top-level `onPreToolUse` IS active.
-- `onPostToolUse` IS dispatched to extensions — this is the reliable enforcement point.
+- The **custom `hookflow-js` engine** and files in `.{{EMPLOYER_PARENT}}/hookflows/` are the PRIMARY governance mechanism in this repo.
+- Extension-based `onPreToolUse` deny hooks are unreliable for some cross-extension tool paths. Do not assume an extension can block tools registered by another extension.
+- YAML hookflows in `.{{EMPLOYER_PARENT}}/hookflows/` are the preferred place for deterministic request-validation deny rules.
+- Extension `onPostToolUse` remains useful for advisory context and side effects.
 - Hooks do NOT propagate to sub-agents launched via `task` tool — sub-agents run in separate sessions without parent extensions.
-- Workaround: prompt-level enforcement for sub-agents + hookflow for main session.
+- Workaround: prompt-level enforcement for sub-agents + hookflow-js for the main session.
 
 ---
 
@@ -208,7 +256,7 @@ When reviewing platform behavior (nightly reflection, context audit, skill optim
 
 | Scenario | Action |
 |----------|--------|
-| Agent ran a blocked command | Add pattern to existing hook or create new extension |
+| Agent ran a blocked command | Add pattern to an existing hookflow or create a new hookflow first; use an extension only if hookflows are insufficient |
 | Agent forgot a required step | Create postToolUse advisory that detects the absence |
 | A rule exists only in instructions | Promote to hookflow for deterministic enforcement |
 | Sub-agent violated a rule | Can't hookflow (SDK limitation) → strengthen prompt + add to copilot-instructions |

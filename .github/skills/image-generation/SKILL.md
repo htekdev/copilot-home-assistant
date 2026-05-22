@@ -1,18 +1,18 @@
 ---
 name: image-generation
-description: AI image generation for {{GITHUB_USERNAME}} social media — OpenAI gpt-image-2 API, {{PERSONAL_DOMAIN}} brand palette, professional infographic style, and upload workflow. Use when user says "generate image", "create image", "AI image", "post image", "infographic", "social media graphic", "image for post", or any image generation activity.
+description: AI image generation for {{{{EMPLOYER_PARENT}}_USERNAME}} social media — OpenAI gpt-image-2 API, {{PERSONAL_DOMAIN}} brand palette, professional infographic style, and upload workflow. Use when user says "generate image", "create image", "AI image", "post image", "infographic", "social media graphic", "image for post", or any image generation activity.
 ---
 
 # Image Generation Skill
 
-Canonical workflow for generating AI images for {{GITHUB_USERNAME}} social media posts using OpenAI's gpt-image-2 model.
+Canonical workflow for generating AI images for {{{{EMPLOYER_PARENT}}_USERNAME}} social media posts using OpenAI's gpt-image-2 model.
 
 ## Core Rules
 
 1. **Every image MUST be an infographic** — when someone sees it, they should understand the entire post topic at a glance
 2. **Every image MUST be premium and professional** — clean, modern, authoritative. Think polished tech company marketing, NOT sci-fi
 3. **NEVER use transparent backgrounds** — always specify a solid dark navy-charcoal background
-4. **Always include '@{{GITHUB_USERNAME}}' watermark** in small light text, bottom-right corner
+4. **Always include '@{{{{EMPLOYER_PARENT}}_USERNAME}}' watermark** in small light text, bottom-right corner
 5. **1024x1024 square** — works across all platforms
 6. **NO stock photos, NO people, NO cartoon illustrations**
 7. **Text in images IS expected** — headlines, stats, key points. gpt-image-2 handles text well
@@ -90,7 +90,7 @@ BODY: [Adapt based on content — use one of these layouts:]
 - **Comparison layout**: Two card sections with subtle borders, separated cleanly
 - **Timeline layout**: Connected dots in blue along a thin line with event labels
 
-BOTTOM: '@{{GITHUB_USERNAME}}' in small light gray text, bottom-right.
+BOTTOM: '@{{{{EMPLOYER_PARENT}}_USERNAME}}' in small light gray text, bottom-right.
 
 DESIGN: Dark navy-charcoal background, blue + white + gray palette. Blue→purple→pink gradient accents on key elements (borders, bars, badges). Clean sans-serif typography. Professional, modern, authoritative. NO neon, NO glow, NO cyberpunk, NO geometric wireframes. Square 1024x1024. Solid background (NOT transparent).
 ```
@@ -107,7 +107,7 @@ LEFT: '[THING A]' label in blue (#3b82f6) + 3-4 attributes in light gray (#cbd5e
 RIGHT: '[THING B]' label in white + 3-4 attributes in white text
 
 HEADER: Bold white headline spanning full width above the split.
-BOTTOM: Verdict/conclusion in blue text. '@{{GITHUB_USERNAME}}' bottom-right.
+BOTTOM: Verdict/conclusion in blue text. '@{{{{EMPLOYER_PARENT}}_USERNAME}}' bottom-right.
 
 DESIGN: Clean contrast, professional comparison layout. Dark navy-charcoal background, blue + white + gray palette. Blue→purple→pink gradient accent on divider. Square 1024x1024. Solid background (NOT transparent).
 ```
@@ -121,7 +121,7 @@ BACKGROUND: Dark navy-charcoal (#0f172a) solid background.
 
 HEADER: '[LIST TITLE]' in bold clean white sans-serif. Blue→purple→pink gradient accent bar below.
 BODY: Each item has a blue (#3b82f6) number + bold white name + one-line description in light gray (#cbd5e1).
-BOTTOM: Key takeaway in blue text. '@{{GITHUB_USERNAME}}' bottom-right.
+BOTTOM: Key takeaway in blue text. '@{{{{EMPLOYER_PARENT}}_USERNAME}}' bottom-right.
 
 DESIGN: Dark navy-charcoal background, blue + white + gray palette. Clean sans-serif typography. Professional and organized. Square 1024x1024. Solid background (NOT transparent).
 ```
@@ -135,9 +135,40 @@ BACKGROUND: Dark navy-charcoal (#0f172a) solid background.
 
 HEADER: '[WHAT HAPPENED]' in bold large white sans-serif. A small blue→purple→pink gradient badge above the headline suggests importance (NOT a red alert — keep it professional).
 BODY: 3-4 key facts in clean white text. One highlighted stat as a larger blue (#60a5fa) number. Thin gray separator lines between sections.
-BOTTOM: 'What this means →' section with key takeaway in light gray text. '@{{GITHUB_USERNAME}}' bottom-right.
+BOTTOM: 'What this means →' section with key takeaway in light gray text. '@{{{{EMPLOYER_PARENT}}_USERNAME}}' bottom-right.
 
 DESIGN: Professional urgency — authoritative, NOT alarming. Dark navy-charcoal background, blue accents, clean typography. Square 1024x1024. Solid background (NOT transparent).
+```
+
+### Dev.to Cover Image (1000×420 — ultra-wide)
+
+For cross-posting to dev.to. Generated at 1536×1024 with content in center band, then extracted and scaled to 1000×420.
+
+```
+Create a premium ultra-wide banner for a developer blog post about [TOPIC].
+
+COMPOSITION CRITICAL: This image will be extracted as an ULTRA-WIDE horizontal strip (2.38:1 ratio). ALL important content (title, visual elements, branding) MUST be concentrated in the CENTER 42% of the image height. The top 29% and bottom 29% should be ONLY dark navy-charcoal background with absolutely no important elements — just solid color or very subtle gradient.
+
+HEADER: '[ARTICLE TITLE]' in bold white (#f8fafc) sans-serif, VERTICALLY CENTERED in the image. Keep text to 1-2 lines max. Large enough to read at small sizes.
+
+VISUAL: One clean visual element — a simple icon, diagram fragment, or tech graphic — placed LEFT or RIGHT of the title. Keep it within the center band.
+
+BACKGROUND: Dark navy-charcoal (#0f172a) solid background filling the entire 1536x1024 canvas.
+
+ACCENT: Blue (#3b82f6) highlight on one keyword or visual element. Blue→purple→pink gradient on a thin horizontal accent line in the center band.
+
+BRANDING: '{{PERSONAL_DOMAIN}}' in small light gray text, right side of center band.
+
+DESIGN: Bold, minimal, ultra-wide safe. Professional dev blog aesthetic. NO neon, NO glow, NO cyberpunk. Wide 1536x1024. Solid background (NOT transparent).
+```
+
+**Post-processing for dev.to cover:**
+```python
+from PIL import Image
+img = Image.open("devto-raw.png")  # 1536×1024
+center_band = img.crop((0, 297, 1536, 727))  # Extract center 430px
+devto_cover = center_band.resize((1000, 420), Image.LANCZOS)
+devto_cover.save("devto-cover.webp", "webp", quality=90)
 ```
 
 ## Image Prompt Engineering Rules
@@ -146,7 +177,7 @@ DESIGN: Professional urgency — authoritative, NOT alarming. Dark navy-charcoal
 - Always specify "dark navy-charcoal (#0f172a) background" explicitly
 - Always end with "Square 1024x1024. Solid background (NOT transparent)."
 - Include the actual text/numbers you want in the image
-- Specify '@{{GITHUB_USERNAME}}' in small light gray text, bottom-right corner
+- Specify '@{{{{EMPLOYER_PARENT}}_USERNAME}}' in small light gray text, bottom-right corner
 - If the image has a comparison, specify what goes on each side
 - NO neon, NO glow, NO cyberpunk, NO geometric wireframes — always use the {{PERSONAL_DOMAIN}} brand palette
 - Use blue→purple→pink gradient for accent elements (bars, borders, badges) — NOT as the background
@@ -161,9 +192,73 @@ After generating the image, upload to Late for social media:
 
 See `late-publishing` skill for the full publish workflow.
 
-## Failure Handling
+## Image-to-Image Generation (Edit / Reference)
 
-- If image generation fails (API error, quota, etc.) → post without image rather than delaying
-- If image quality is poor (blurry text, wrong layout) → regenerate with more specific prompt
-- Max 2 regeneration attempts before posting text-only
-- Log image quality issues to agent working memory for future prompt improvement
+Use `generate_image_from_image` when you need to:
+- **Edit an existing image** — modify colors, add elements, change style
+- **Use images as reference** — generate a new image inspired by 1-4 source images
+- **Composite images** — combine multiple source images into a single output
+- **Masked editing** — edit only specific regions using a mask with alpha channel
+
+### API Pattern (Image-to-Image)
+
+```python
+import openai, base64
+
+client = openai.OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+
+# Single image edit
+result = client.images.edit(
+    model="gpt-image-2",
+    image=open("source.png", "rb"),
+    prompt="Transform this into a watercolor painting style",
+    size="1024x1024",
+    quality="high"
+)
+
+# Multiple reference images
+result = client.images.edit(
+    model="gpt-image-2",
+    image=[
+        open("reference1.png", "rb"),
+        open("reference2.png", "rb"),
+    ],
+    prompt="Combine these into a single cohesive scene"
+)
+
+# With mask (edit specific region)
+result = client.images.edit(
+    model="gpt-image-2",
+    image=open("photo.png", "rb"),
+    mask=open("mask.png", "rb"),  # transparent areas = edit zone
+    prompt="Replace the masked area with a sunset sky"
+)
+```
+
+### Tool Usage
+
+```
+generate_image_from_image(
+  prompt: "Transform into {{PERSONAL_DOMAIN}} brand style with dark navy background",
+  source_images: ["path/to/source.png"],
+  size: "1024x1024",
+  output_filename: "branded-version"
+)
+```
+
+### Key Rules
+1. **Max 4 source images** per request
+2. **Max 50MB per image** — resize large files before sending
+3. **Mask must have alpha channel** — transparent regions mark edit areas
+4. **If mask + multiple images** — mask applies to first image only
+5. **gpt-image-2 always uses high fidelity** — no `input_fidelity` parameter needed
+6. Supported formats: PNG, JPEG, WebP
+
+## Failure Handling (CRITICAL — from {{PARENT_1}}, 2026-05-19)
+
+- **NEVER post without an image.** Every social media post MUST have a brand-consistent image attached.
+- If image generation fails (API error, quota, etc.) → **RETRY once** with the same prompt
+- If retry also fails → **ESCALATE to {{PARENT_1}} via Telegram** with the error. Do NOT schedule the post without an image.
+- If image quality is poor (blurry text, wrong layout) → regenerate with more specific prompt (max 2 attempts)
+- If OPENAI_API_KEY is missing → STOP. Escalate to {{PARENT_1}}. Do NOT post text-only.
+- Log all image failures to agent working memory for debugging
