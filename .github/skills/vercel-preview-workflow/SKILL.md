@@ -16,9 +16,9 @@ description: >
 
 | Repo | Site | Domain |
 |------|------|--------|
-| `{{GITHUB_USERNAME}}/personal-site` | {{PERSONAL_DOMAIN}} | {{PERSONAL_DOMAIN}} |
-| `{{GITHUB_USERNAME}}/client-site-template-b` | Client Site B | {{CLIENT_SITE_B_DOMAIN}} |
-| `{{GITHUB_USERNAME}}/client-site-template-a` | Client Site A | {{CLIENT_SITE_A_DOMAIN}} |
+| `{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site` | {{PERSONAL_DOMAIN}} | {{PERSONAL_DOMAIN}} |
+| `{{{{EMPLOYER_PARENT}}_USERNAME}}/blackout-pickleball` | Blackout Pickleball | brandblackout.com |
+| `{{{{EMPLOYER_PARENT}}_USERNAME}}/carplay-mobile-detail` | CarPlay Mobile Detail | carplaymobiledetail.com |
 
 > If you're unsure whether a repo is Vercel-connected, check for a `vercel.json` or Vercel integration in the repo settings.
 
@@ -32,6 +32,8 @@ description: >
 4. **ALWAYS send the preview URL to {{PARENT_1}}** via Telegram so he can review the live preview.
 5. **NEVER merge until {{PARENT_1}} approves** the preview.
 
+> **Hookflow enforcement:** The `require-vercel-link-with-pr` YAML hookflow (`.{{EMPLOYER_PARENT}}/hookflows/require-vercel-link-with-pr.yml`) deterministically blocks any Telegram message that references an {{{{EMPLOYER_PARENT}}_USERNAME}} PR without including a Vercel preview URL. This ensures Rule 4 cannot be violated.
+
 ---
 
 ## Complete Workflow
@@ -40,7 +42,7 @@ description: >
 
 ```powershell
 $repo = "{repo-name}"
-$repoPath = "C:\Repos\{{GITHUB_USERNAME}}\$repo"
+$repoPath = "C:\Repos\{{{{EMPLOYER_PARENT}}_USERNAME}}\$repo"
 Set-Location $repoPath
 git checkout main
 git pull origin main
@@ -55,14 +57,14 @@ npm run build
 
 # Commit and push
 git add -A
-git commit -m "feat: {description}" --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>"
+git commit -m "feat: {description}" --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}.{{EMPLOYER_PARENT}}.com>"
 git push origin $branch
 ```
 
 ### Step 2 — Create PR
 
 ```powershell
-$prUrl = gh pr create --repo "{{GITHUB_USERNAME}}/$repo" --base main --head $branch `
+$prUrl = gh pr create --repo "{{{{EMPLOYER_PARENT}}_USERNAME}}/$repo" --base main --head $branch `
   --title "{emoji} {description}" `
   --body "## Changes`n`n- {change 1}`n- {change 2}`n`n## Preview`n`nWaiting for Vercel preview deployment..."
 Write-Output "PR created: $prUrl"
@@ -70,7 +72,7 @@ Write-Output "PR created: $prUrl"
 
 ### Step 3 — Wait for Vercel Preview URL
 
-Vercel's GitHub integration posts a comment on the PR with the preview URL. This typically takes 30-120 seconds after the PR is created.
+Vercel's {{EMPLOYER_PARENT}} integration posts a comment on the PR with the preview URL. This typically takes 30-120 seconds after the PR is created.
 
 **Preferred method — use `create_vercel_pr` or `dev_push` (auto-polls):**
 
@@ -84,7 +86,7 @@ If the tool returns `"vercel_preview_url": "timeout"`, the build may still be ru
 **Manual fallback — use `gh api`:**
 
 ```powershell
-$owner = "{{GITHUB_USERNAME}}"
+$owner = "{{{{EMPLOYER_PARENT}}_USERNAME}}"
 $repo = "{repo-name}"
 $prNumber = "{pr-number}"
 
@@ -131,14 +133,14 @@ telegram_send_message(
 
 Do NOT merge until {{PARENT_1}} explicitly approves. Acceptable approval signals:
 - "merge it", "looks good", "LGTM", "ship it", "approved", "go ahead", "merge"
-- A GitHub PR approval
+- A {{EMPLOYER_PARENT}} PR approval
 
 ### Step 6 — Merge PR
 
 After approval:
 
 ```powershell
-gh pr merge $prNumber --repo "{{GITHUB_USERNAME}}/$repo" --squash --delete-branch
+gh pr merge $prNumber --repo "{{{{EMPLOYER_PARENT}}_USERNAME}}/$repo" --squash --delete-branch
 ```
 
 Then update your working memory with the deployment.
@@ -147,13 +149,36 @@ Then update your working memory with the deployment.
 
 ## Handling Edge Cases
 
+### Vercel deployment FAILED
+Both `create_vercel_pr` and `dev_push` now **detect failed deployments** automatically. When Vercel reports a build failure:
+
+- The tool returns `status: "failed"` with structured error details:
+  - `error_summary` — human-readable description from the deployment status API
+  - `inspector_url` — direct link to Vercel build logs
+  - `deployment_details` — full state/description/log_url from {{EMPLOYER_PARENT}} deployments API
+  - `vercel_comment` — raw Vercel bot comment for additional context
+
+**Agent workflow on failure:**
+1. Read the `error_summary` and `inspector_url`
+2. Diagnose the build error (check build logs, review code changes)
+3. Fix the issue on the branch
+4. Push again (`dev_push`) — Vercel auto-rebuilds
+5. The tool will poll again for the new deployment status
+
+**Common failure causes:**
+- TypeScript/JSX compilation errors
+- Missing environment variables (preview vs production)
+- Content schema validation failures (Zod errors in Astro content collections)
+- Dependency resolution issues
+- Import errors for missing files/components
+
 ### Vercel preview takes too long (>3 minutes)
-- Check if the build failed: `gh pr checks $prNumber --repo "{{GITHUB_USERNAME}}/$repo"`
+- Check if the build failed: `gh pr checks $prNumber --repo "{{{{EMPLOYER_PARENT}}_USERNAME}}/$repo"`
 - If build failed, fix the issue, push again, restart polling
 - If build is still running, increase wait time
 
 ### Preview URL not found in comments
-Some repos use the Vercel GitHub App which posts as a deployment status rather than a comment:
+Some repos use the Vercel {{EMPLOYER_PARENT}} App which posts as a deployment status rather than a comment:
 ```powershell
 # Check deployment statuses
 gh api "repos/$owner/$repo/pulls/$prNumber" --jq '.head.sha' | ForEach-Object {
