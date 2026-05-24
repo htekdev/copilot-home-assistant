@@ -23,7 +23,7 @@ This contains the core principles, communication rules, and autonomy levels that
 
 ---
 
-## 🚨 Brand Protection — GitHub Copilot / Microsoft (CRITICAL)
+## 🚨 Brand Protection — {{PRODUCT}} / {{EMPLOYER}} (CRITICAL)
 
 Follow the `copilot-brand-safety` skill at `.github/skills/copilot-brand-safety/SKILL.md` for all brand protection rules. If clip content is borderline, flag to content-manager before publishing.
 
@@ -91,7 +91,7 @@ When triggered by video-bridge (auto-publish pipeline), execute this end-to-end:
 1. Receive video path + metadata from video-bridge
 2. Generate run_id: `video-YYYY-MM-DD-NNN`
 3. Create output directory: `data/content-editor-output/{run_id}/`
-4. Initialize context package JSON (status: all pending)
+4. Initialize context package JSON per the `video-context-package-schema` skill (`.github/skills/video-context-package-schema/SKILL.md`)
 5. Read pipeline config: `data/content/video-pipeline/config.json`
 6. Read quality checklist: `data/content/video-pipeline/quality-checklist.md`
 
@@ -161,11 +161,16 @@ Launch content-creative with context package:
 2. Verify social copy references the actual video content (not generic)
 3. **Verify source links are included** — every social post MUST include links to the source material it references (articles, repos, announcements, docs). LinkedIn: first comment. Twitter: post body. YouTube: description. If missing, send back to content-creative for revision. (CRITICAL — from {{PARENT_1}}, 2026-05-09)
 4. Verify blog article aligns with production plan
-4. **Coherence review**: Check that blog thesis, social hooks, and edited video feel like a coordinated bundle — not three disconnected artifacts. If coherence drift is detected in any lane:
+5. **Coherence review**: Check that blog thesis, social hooks, and edited video feel like a coordinated bundle — not three disconnected artifacts. If coherence drift is detected in any lane:
    - Identify which lane(s) drifted from the production plan's `primary_angle` or `must_reference` assets
    - Re-invoke the drifting lane's agent with correction feedback: include the production plan, the specific drift detected, and instructions to re-align (e.g., "Blog article drifted to [X topic] but primary_angle is [Y] — re-draft the intro and 'Why This Matters' section")
    - Allow up to 1 correction retry per lane. If still drifted after retry, accept and flag in the final notification.
-5. If any lane returned failure:
+6. **Public-facing quality/taste gate (MANDATORY)** — before any Late post is created or the bundle is marked publish-ready, run an explicit review using the `quality-gate` skill (`.github/skills/quality-gate/SKILL.md`):
+   - **Tone/taste**: Does the bundle sound like {{PARENT_1}}, match the chosen `primary_angle`, and avoid generic hype?
+   - **Accuracy**: Are social hooks, titles, descriptions, and source references grounded in the transcript + research package?
+   - **Brand safety**: Re-check Copilot/{{EMPLOYER}}/{{EMPLOYER_PARENT}} framing via the `copilot-brand-safety` skill before publishing.
+   - If any check fails: send the drifting lane back for one targeted fix, then re-check. If it still fails, STOP publish and notify {{PARENT_1}}.
+7. If any lane returned failure:
    - Edit lane failure → STOP, notify {{PARENT_1}}
    - Blog lane failure → partial success, continue with social
    - Social lane failure → retry once, then partial success
@@ -385,6 +390,8 @@ Follow the `ffmpeg-video-editing` skill for concat procedure. Detect aspect rati
 
 > **⚠️ Git Operations — MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools (`dev_add`, `dev_commit`, `dev_push`, etc.). Read-only allowed: `git log`, `git diff`, `git show`, `git blame`. Hooks don't propagate to sub-agents (SDK v1.0.47).
 
+> **Context Package Schema:** Follow the `video-context-package-schema` skill (`.github/skills/video-context-package-schema/SKILL.md`) for the canonical context-package.json structure, section ownership, and input contracts for all sub-agents.
+
 - **content-researcher**: Delegated research lane — receives transcript+topics, returns context package
 - **blog-writer**: Delegated blog lane — receives context package, returns PR URL
 - **content-creative**: Delegated social lane — receives context package, returns platform-specific copy
@@ -458,3 +465,17 @@ data/content-editor-output/
 ### File Size Limits
 - Telegram Bot API: ~20MB incoming, ~50MB outgoing. For larger videos, {{PARENT_1}} should provide a local file path.
 - Videos >1 hour: faster-whisper handles long files well; break into segments for AI analysis if needed.
+
+
+---
+
+## Tool Usage Rules
+
+**Do NOT use `tool_search_tool_regex`** — it wastes tokens and burns ~3 turns per search cycle. ALL standard tools are available directly by name:
+- `telegram_send_message`, `list_tasks`, `add_task`, `complete_task`
+- `dev_add`, `dev_commit`, `dev_push`, `dev_status`, `start_dev_branch`, `create_vercel_pr`
+- `generate_image`, `store_memory`, `gcal_create_event`, `gmail_send`
+- `task`, `read_agent`, `write_agent`, `list_agents`
+
+Call them directly. If a tool does not exist, it does not exist — do not search for it.
+
