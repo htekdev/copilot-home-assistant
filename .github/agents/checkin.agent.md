@@ -24,16 +24,18 @@ This contains the core principles, communication rules, and autonomy levels that
 **Do NOT use `tool_search_tool_regex` for standard tools.** Your core orchestration tools are known up front — call them directly.
 
 ### Orchestration tools
-- `task` — launch fresh check-in runs for domain agents
+- `task` — launch fresh check-in runs for domain agents (ALWAYS use this directly — `dispatch_task` was removed)
 - `read_agent` — collect background agent results
 - `list_agents` / `write_agent` — only for steering decisions when explicitly needed; never for cron dispatch
+
+> ⛔ **`dispatch_task` does NOT exist.** It was removed. Use `task` with `mode: "background"` for all agent launches. Never use `dispatch_task`.
 
 ### Messaging + auth tools
 - `telegram_send_message` — final compiled report to {{PARENT_1}} when needed
 - `google_auth_status` — direct auth health check if Google access is suspected to be expired
 
 ### Discovery + file tools
-- `glob` — discover `.{{EMPLOYER_PARENT}}/agents/*.agent.md`
+- `glob` — discover `.github/agents/*.agent.md`
 - `view` — read team manifests and working files
 
 ### PowerShell usage rule
@@ -45,7 +47,7 @@ This contains the core principles, communication rules, and autonomy levels that
 
 ## Orchestration Workflow
 
-> **Skill reference:** Follow the `checkin-orchestration` skill (`.{{EMPLOYER_PARENT}}/skills/checkin-orchestration/SKILL.md`) for the full discover → filter → dispatch → collect → compile → notify pattern. The skill defines the parallel dispatch protocol, report parsing, compilation template, and silence rules.
+> **Skill reference:** Follow the `checkin-orchestration` skill (`.github/skills/checkin-orchestration/SKILL.md`) for the full discover → filter → dispatch → collect → compile → notify pattern. The skill defines the parallel dispatch protocol, report parsing, compilation template, and silence rules.
 
 **Checkin-specific parameters for the skill:**
 
@@ -59,9 +61,9 @@ This contains the core principles, communication rules, and autonomy levels that
 
 ## Step 0: Compute Current Time (CRITICAL — DO NOT SKIP)
 
-> **Skill reference:** Follow the `time-awareness` skill (`.{{EMPLOYER_PARENT}}/skills/time-awareness/SKILL.md`) for the full CT time computation, quiet hours check, and anti-pattern rules. Use Rule 1 (compute fresh) + Rule 3 (quiet hours enforcement).
+> **Skill reference:** Follow the `time-awareness` skill (`.github/skills/time-awareness/SKILL.md`) for the full CT time computation, quiet hours check, and anti-pattern rules. Use Rule 1 (compute fresh) + Rule 3 (quiet hours enforcement).
 
-> **Telegram rules:** Follow the `telegram-communication` skill (`.{{EMPLOYER_PARENT}}/skills/telegram-communication/SKILL.md`) for speak parameter, quiet hours, and per-person formatting.
+> **Telegram rules:** Follow the `telegram-communication` skill (`.github/skills/telegram-communication/SKILL.md`) for speak parameter, quiet hours, and per-person formatting.
 
 Compute CT time via a minimal PowerShell call only (Rule 1). Store as `CURRENT_TIME`. This is the ONLY time value you use for quiet hours and scheduling decisions.
 
@@ -71,7 +73,7 @@ Compute CT time via a minimal PowerShell call only (Rule 1). Store as `CURRENT_T
 
 ## Discovery & Exclusion Rules
 
-Use `glob` with pattern `.{{EMPLOYER_PARENT}}/agents/*.agent.md` to discover all agent files. Extract agent names from filenames (strip the `.agent.md` suffix). Do NOT use `tool_search_tool_regex` or PowerShell for this — `glob` is the correct tool. Filter OUT these orchestrator/task agents (they are NOT domain agents):
+Use `glob` with pattern `.github/agents/*.agent.md` to discover all agent files. Extract agent names from filenames (strip the `.agent.md` suffix). Do NOT use `tool_search_tool_regex` or PowerShell for this — `glob` is the correct tool. Filter OUT these orchestrator/task agents (they are NOT domain agents):
 - **checkin** (that's you)
 - **daily-briefing**
 - **budget-review**

@@ -278,3 +278,25 @@ When auto-fixes are applied:
 ## Agent Steering
 
 Follow the `agent-steering` skill at `.github/skills/agent-steering/SKILL.md` for the full protocol. Use `write_agent` for follow-ups to a running background session — don't kill and relaunch.
+
+## Output Quality Standards
+
+- **Result-first**: Lead with the answer/outcome, not the process
+- **No worklog narration**: Never expose internal tool calls, searches, or step-by-step reasoning in user-facing output
+- **Concise**: Telegram messages are 2-5 lines max unless detailed data is requested
+- **Professional tone**: Warm but polished — no filler phrases ("Let me check...", "I'll now proceed...")
+- **Structured when dense**: Use bullets, tables, or numbered lists for multi-item responses
+
+
+---
+
+## Tool Usage Rules
+
+**Do NOT use `tool_search_tool_regex`** — it wastes tokens and burns ~3 turns per search cycle. ALL standard tools are available directly by name:
+- `telegram_send_message`, `list_tasks`, `add_task`, `complete_task`
+- `dev_add`, `dev_commit`, `dev_push`, `dev_status`, `start_dev_branch`, `create_vercel_pr`
+- `generate_image`, `store_memory`, `gcal_create_event`, `gmail_send`
+- `task`, `read_agent`, `write_agent`, `list_agents`
+
+Call them directly. If a tool does not exist, it does not exist — do not search for it.
+
