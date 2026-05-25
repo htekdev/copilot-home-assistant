@@ -1,0 +1,96 @@
+name: Validate URLs in outgoing emails
+description: Blocks gmail_send if any HTTP(S) URL in the email body returns a non-200 status code. Prevents sending emails with broken links that damage credibility.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [gmail_send]
+blocking: true
+env:
+  BODY_JSON: ${{ toJSON(event.tool.args.body) }}
+steps:
+  - name: Validate all URLs in email body return 200
+    run: |
+      $body = $null
+      if (-not [string]::IsNullOrWhiteSpace($env:BODY_JSON)) {
+        try { $body = $env:BODY_JSON | ConvertFrom-Json } catch { $body = $env:BODY_JSON }
+      }
+
+      if ([string]::IsNullOrWhiteSpace($body)) {
+        Write-Host 'No email body provided; skipping URL validation.'
+        exit 0
+      }
+
+      # Extract all URLs from the body (http and https only, skip mailto/tel/etc)
+      $urlPattern = 'https?://[^\s\)\]\}\"''<>,;]+'
+      $matches = [regex]::Matches($body, $urlPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+      if ($matches.Count -eq 0) {
+        Write-Host 'No HTTP(S) URLs found in email body; allowing send.'
+        exit 0
+      }
+
+      # Clean trailing punctuation and deduplicate
+      $uniqueUrls = $matches | ForEach-Object { $_.Value.TrimEnd('.', ',', ';', ':', '!', '?', ')') } | Sort-Object -Unique
+      Write-Host "Found $($uniqueUrls.Count) URL(s) to validate: $($uniqueUrls -join ', ')"
+
+      $brokenUrls = @()
+
+      foreach ($url in $uniqueUrls) {
+        try {
+          $response = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 5 -TimeoutSec 10 -ErrorAction Stop
+          $statusCode = $response.StatusCode
+          if ($statusCode -ge 200 -and $statusCode -lt 400) {
+            Write-Host "  OK ($statusCode): $url"
+          } else {
+            Write-Host "  BROKEN ($statusCode): $url"
+            $brokenUrls += "$url (HTTP $statusCode)"
+          }
+        } catch {
+          # Try GET as fallback (some servers reject HEAD)
+          try {
+            $response = Invoke-WebRequest -Uri $url -Method Get -MaximumRedirection 5 -TimeoutSec 10 -ErrorAction Stop
+            $statusCode = $response.StatusCode
+            if ($statusCode -ge 200 -and $statusCode -lt 400) {
+              Write-Host "  OK ($statusCode via GET): $url"
+            } else {
+              Write-Host "  BROKEN ($statusCode): $url"
+              $brokenUrls += "$url (HTTP $statusCode)"
+            }
+          } catch {
+            $errCode = $null
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+              $errCode = [int]$_.Exception.Response.StatusCode
+            }
+            if ($errCode) {
+              Write-Host "  BROKEN ($errCode): $url"
+              $brokenUrls += "$url (HTTP $errCode)"
+            } else {
+              Write-Host "  BROKEN (connection failed): $url"
+              $brokenUrls += "$url (connection failed)"
+            }
+          }
+        }
+      }
+
+      if ($brokenUrls.Count -gt 0) {
+        $urlList = ($brokenUrls | ForEach-Object { "  - $_" }) -join "`n"
+        $lines = @(
+          "🚫 BLOCKED: Email contains broken URL(s) that would show errors to the recipient.",
+          "",
+          "Broken URLs:",
+          $urlList,
+          "",
+          "Fix these URLs before sending:",
+          "1. Verify each URL loads correctly in a browser",
+          "2. Check for typos in the URL path",
+          "3. If the page doesn't exist yet, publish it first or remove the link",
+          "4. If a URL is intentionally unreachable (internal/private), remove it from the email body",
+          "",
+          "Governance: No outgoing email may contain dead links — they damage credibility."
+        )
+        Write-Error ($lines -join "`n")
+        exit 1
+      }
+
+      Write-Host "All $($uniqueUrls.Count) URL(s) validated successfully. Allowing email send."
+      exit 0

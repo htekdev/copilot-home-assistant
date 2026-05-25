@@ -3,7 +3,7 @@ name: htek-dev-article
 description: >
   {{PERSONAL_DOMAIN}} blog article creation — frontmatter schema, tag conventions, research standards,
   quality checklist, git worktree PR workflow, and video-companion article mode. Use when
-  creating articles on {{PERSONAL_DOMAIN}}, writing blog posts, creating PRs on your personal-site repo, checking
+  creating articles on {{PERSONAL_DOMAIN}}, writing blog posts, creating PRs on htek-dev-site, checking
   article quality, or any agent says "write article", "blog post", "{{PERSONAL_DOMAIN}} article",
   "create PR for article", "frontmatter schema", "article quality check".
 ---
@@ -14,12 +14,12 @@ Complete reference for creating, reviewing, and publishing articles on [{{PERSON
 
 ## Site Reference
 
-- **Repo**: `{{GITHUB_USERNAME}}/personal-site` on {{EMPLOYER_PARENT}}
-- **Local clone**: `C:\Repos\{{GITHUB_USERNAME}}\personal-site`
+- **Repo**: `{{GITHUB_USERNAME}}/htek-dev-site` on {{EMPLOYER_PARENT}}
+- **Local clone**: `C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site`
 - **Tech stack**: Astro 5, MDX content collections, Tailwind CSS 4, {{EMPLOYER_PARENT}} Pages
 - **Site URL**: https://{{PERSONAL_DOMAIN}}
 - **Articles path**: `src/content/articles/{slug}.mdx`
-- **Style guide**: `C:\Repos\{{GITHUB_USERNAME}}\personal-site\.github\instructions\articles.instructions.md` (read at runtime)
+- **Style guide**: `C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\.github\instructions\articles.instructions.md` (read at runtime)
 
 ## Frontmatter Schema
 
@@ -35,7 +35,7 @@ draft: false
 ---
 ```
 
-**Optional fields:** `updatedDate`, `heroImage`, `devto_id`, `devto_hash`, `hashnode_id`, `hashnode_hash`, `medium_id`. Never set sync ID fields — cross-posting {{EMPLOYER_PARENT}} Actions populate those.
+**Optional fields:** `updatedDate`, `heroImage`, `devtoCover`, `devto_id`, `devto_hash`, `hashnode_id`, `hashnode_hash`, `medium_id`. Never set sync ID fields — cross-posting {{EMPLOYER_PARENT}} Actions populate those. The `devtoCover` field provides a 1000×420 image optimized for dev.to's cover display — if absent, the Action falls back to `heroImage` (which dev.to will crop).
 
 ## Tag Conventions
 
@@ -91,7 +91,7 @@ Before creating a PR, verify every item:
 
 ### Step 1: Pull latest main
 ```powershell
-Set-Location "C:\Repos\{{GITHUB_USERNAME}}\personal-site"
+Set-Location "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site"
 git checkout main
 git pull origin main
 ```
@@ -101,31 +101,31 @@ git pull origin main
 $slug = "your-article-slug"
 $branch = "article/$slug"
 git branch $branch main
-git worktree add "C:\Repos\{{GITHUB_USERNAME}}\personal-site\worktrees\$slug" $branch
+git worktree add "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\worktrees\$slug" $branch
 ```
 
 ### Step 3: Write the article file
 Use the `create` tool to write the final MDX content to:
 ```
-C:\Repos\{{GITHUB_USERNAME}}\personal-site\worktrees\$slug\src\content\articles\$slug.mdx
+C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\worktrees\$slug\src\content\articles\$slug.mdx
 ```
 
 ### Step 4: Stage, commit, and push
 ```powershell
-Set-Location "C:\Repos\{{GITHUB_USERNAME}}\personal-site\worktrees\$slug"
-git add "src/content/articles/$slug.mdx"
-git commit -m "feat(article): add $slug" --trailer "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"
-git push origin $branch
+Set-Location "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\worktrees\$slug"
+dev_add -p "src/content/articles/$slug.mdx"
+dev_commit -m "feat(article): add $slug"
+dev_push
 ```
 
 ### Step 5: Create PR
 ```powershell
-gh pr create --repo {{GITHUB_USERNAME}}/personal-site --base main --head $branch --title "📝 New article: $title" --body "## New Article\n\n**Title:** $title\n**Slug:** $slug\n**Tags:** $tags\n\n### Review Summary\n- Claude Opus review: ✅ passed\n- GPT Codex review: ✅ passed\n- Outbound links: N\n- Cross-links to existing articles: N\n\n---\n\n$description"
+gh pr create --repo {{GITHUB_USERNAME}}/htek-dev-site --base main --head $branch --title "📝 New article: $title" --body "## New Article\n\n**Title:** $title\n**Slug:** $slug\n**Tags:** $tags\n\n### Review Summary\n- Claude Opus review: ✅ passed\n- GPT Codex review: ✅ passed\n- Outbound links: N\n- Cross-links to existing articles: N\n\n---\n\n$description"
 ```
 
 ### Step 6: Wait for Vercel Preview & Send to {{PARENT_1}}
 
-> **⚠️ MANDATORY:** your personal-site repo is Vercel-connected. Follow the `vercel-preview-workflow` skill (`.github/skills/vercel-preview-workflow/SKILL.md`) to:
+> **⚠️ MANDATORY:** htek-dev-site is Vercel-connected. Follow the `vercel-preview-workflow` skill (`.github/skills/vercel-preview-workflow/SKILL.md`) to:
 > 1. Poll for the Vercel bot comment with the preview URL
 > 2. Extract the preview URL
 > 3. Send both the PR URL and preview URL to {{PARENT_1}} via Telegram (with `speak`)
@@ -138,8 +138,8 @@ gh pr create --repo {{GITHUB_USERNAME}}/personal-site --base main --head $branch
 
 ### Step 7: Clean up worktree (after merge)
 ```powershell
-Set-Location "C:\Repos\{{GITHUB_USERNAME}}\personal-site"
-git worktree remove "C:\Repos\{{GITHUB_USERNAME}}\personal-site\worktrees\$slug"
+Set-Location "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site"
+git worktree remove "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\worktrees\$slug"
 ```
 
 ## Video Companion Article Mode
@@ -182,7 +182,7 @@ When invoked with a **context package** from the content-editor orchestrator:
   "slug": "article-slug-here",
   "title": "Article Title Here",
   "article_path": "src/content/articles/article-slug-here.mdx",
-  "pr_url": "https://github.com/{{GITHUB_USERNAME}}/personal-site/pull/NNN",
+  "pr_url": "https://github.com/{{GITHUB_USERNAME}}/htek-dev-site/pull/NNN",
   "related_articles": ["slug1", "slug2"],
   "video_embed_status": "embedded|link-placeholder|pending-url"
 }
