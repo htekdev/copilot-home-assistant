@@ -16,9 +16,9 @@ description: >
 
 | Repo | Site | Domain |
 |------|------|--------|
-| `{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site` | {{PERSONAL_DOMAIN}} | {{PERSONAL_DOMAIN}} |
-| `{{{{EMPLOYER_PARENT}}_USERNAME}}/blackout-pickleball` | Blackout Pickleball | brandblackout.com |
-| `{{{{EMPLOYER_PARENT}}_USERNAME}}/carplay-mobile-detail` | CarPlay Mobile Detail | carplaymobiledetail.com |
+| `{{GITHUB_USERNAME}}/htek-dev-site` | {{PERSONAL_DOMAIN}} | {{PERSONAL_DOMAIN}} |
+| `{{GITHUB_USERNAME}}/blackout-pickleball` | Blackout Pickleball | brandblackout.com |
+| `{{GITHUB_USERNAME}}/carplay-mobile-detail` | CarPlay Mobile Detail | carplaymobiledetail.com |
 
 > If you're unsure whether a repo is Vercel-connected, check for a `vercel.json` or Vercel integration in the repo settings.
 
@@ -32,7 +32,7 @@ description: >
 4. **ALWAYS send the preview URL to {{PARENT_1}}** via Telegram so he can review the live preview.
 5. **NEVER merge until {{PARENT_1}} approves** the preview.
 
-> **Hookflow enforcement:** The `require-vercel-link-with-pr` YAML hookflow (`.{{EMPLOYER_PARENT}}/hookflows/require-vercel-link-with-pr.yml`) deterministically blocks any Telegram message that references an {{{{EMPLOYER_PARENT}}_USERNAME}} PR without including a Vercel preview URL. This ensures Rule 4 cannot be violated.
+> **Hookflow enforcement:** The `require-vercel-link-with-pr` YAML hookflow (`.github/hookflows/require-vercel-link-with-pr.yml`) deterministically blocks any Telegram message that references an {{GITHUB_USERNAME}} PR without including a Vercel preview URL. This ensures Rule 4 cannot be violated.
 
 ---
 
@@ -42,7 +42,7 @@ description: >
 
 ```powershell
 $repo = "{repo-name}"
-$repoPath = "C:\Repos\{{{{EMPLOYER_PARENT}}_USERNAME}}\$repo"
+$repoPath = "C:\Repos\{{GITHUB_USERNAME}}\$repo"
 Set-Location $repoPath
 git checkout main
 git pull origin main
@@ -56,15 +56,15 @@ git checkout -b $branch
 npm run build
 
 # Commit and push
-git add -A
-git commit -m "feat: {description}" --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}.{{EMPLOYER_PARENT}}.com>"
-git push origin $branch
+dev_add -p "."
+dev_commit -m "feat: {description}"
+dev_push
 ```
 
 ### Step 2 — Create PR
 
 ```powershell
-$prUrl = gh pr create --repo "{{{{EMPLOYER_PARENT}}_USERNAME}}/$repo" --base main --head $branch `
+$prUrl = gh pr create --repo "{{GITHUB_USERNAME}}/$repo" --base main --head $branch `
   --title "{emoji} {description}" `
   --body "## Changes`n`n- {change 1}`n- {change 2}`n`n## Preview`n`nWaiting for Vercel preview deployment..."
 Write-Output "PR created: $prUrl"
@@ -86,7 +86,7 @@ If the tool returns `"vercel_preview_url": "timeout"`, the build may still be ru
 **Manual fallback — use `gh api`:**
 
 ```powershell
-$owner = "{{{{EMPLOYER_PARENT}}_USERNAME}}"
+$owner = "{{GITHUB_USERNAME}}"
 $repo = "{repo-name}"
 $prNumber = "{pr-number}"
 
@@ -140,7 +140,7 @@ Do NOT merge until {{PARENT_1}} explicitly approves. Acceptable approval signals
 After approval:
 
 ```powershell
-gh pr merge $prNumber --repo "{{{{EMPLOYER_PARENT}}_USERNAME}}/$repo" --squash --delete-branch
+gh pr merge $prNumber --repo "{{GITHUB_USERNAME}}/$repo" --squash --delete-branch
 ```
 
 Then update your working memory with the deployment.
@@ -173,7 +173,7 @@ Both `create_vercel_pr` and `dev_push` now **detect failed deployments** automat
 - Import errors for missing files/components
 
 ### Vercel preview takes too long (>3 minutes)
-- Check if the build failed: `gh pr checks $prNumber --repo "{{{{EMPLOYER_PARENT}}_USERNAME}}/$repo"`
+- Check if the build failed: `gh pr checks $prNumber --repo "{{GITHUB_USERNAME}}/$repo"`
 - If build failed, fix the issue, push again, restart polling
 - If build is still running, increase wait time
 

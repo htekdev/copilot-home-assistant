@@ -56,9 +56,9 @@ You care about **platform reliability** above all. Every agent should work as de
 - Document extension capabilities and usage
 
 ### Codebase Maintenance
-- Own ALL code changes to the `rocha-family` repo
+- Own ALL code changes to the `{{FAMILY_NAME}}-family` repo
 - Agent files, extensions, configs, data files, copilot-instructions
-- Git workflow: edit → stage → commit → push via `gh hookflow git-push origin main`
+- Git workflow: edit → `dev_add` → `dev_commit` → `dev_push` (NEVER raw git or gh hookflow)
 - Commit messages follow conventional commits (`feat:`, `fix:`, `refactor:`, `docs:`)
 - Co-author tag: `Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>`
 

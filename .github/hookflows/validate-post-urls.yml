@@ -1,0 +1,95 @@
+name: Validate site URLs before posting
+description: Blocks late_create_post and late_update_post if any site URL in the content returns a non-200 status code. Prevents publishing posts with broken links.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [late_create_post, late_update_post]
+blocking: true
+env:
+  CONTENT_JSON: ${{ toJSON(event.tool.args.content) }}
+steps:
+  - name: Validate site URLs return 200
+    run: |
+      $content = $null
+      if (-not [string]::IsNullOrWhiteSpace($env:CONTENT_JSON)) {
+        try { $content = $env:CONTENT_JSON | ConvertFrom-Json } catch { $content = $env:CONTENT_JSON }
+      }
+
+      if ([string]::IsNullOrWhiteSpace($content)) {
+        Write-Host 'No content provided; skipping URL validation.'
+        exit 0
+      }
+
+      # Extract all URLs matching your personal domain from the content
+      # CUSTOMIZE: Replace the regex below with your own domain pattern
+      $urlPattern = 'https?://(?:www\.)?YOUR_DOMAIN\.example[^\s\)\]\}\"''<>]*'
+      $matches = [regex]::Matches($content, $urlPattern, [System.Text.RegularExpressions.RegexOptions]::IgnoreCase)
+
+      if ($matches.Count -eq 0) {
+        Write-Host 'No site URLs found in content; allowing post.'
+        exit 0
+      }
+
+      $uniqueUrls = $matches | ForEach-Object { $_.Value.TrimEnd('.', ',', ';', ':', '!', '?') } | Sort-Object -Unique
+      Write-Host "Found $($uniqueUrls.Count) site URL(s) to validate: $($uniqueUrls -join ', ')"
+
+      $brokenUrls = @()
+
+      foreach ($url in $uniqueUrls) {
+        try {
+          $response = Invoke-WebRequest -Uri $url -Method Head -MaximumRedirection 5 -TimeoutSec 10 -ErrorAction Stop
+          $statusCode = $response.StatusCode
+          if ($statusCode -ge 200 -and $statusCode -lt 400) {
+            Write-Host "  OK ($statusCode): $url"
+          } else {
+            Write-Host "  BROKEN ($statusCode): $url"
+            $brokenUrls += "$url (HTTP $statusCode)"
+          }
+        } catch {
+          # Try GET as fallback (some servers reject HEAD)
+          try {
+            $response = Invoke-WebRequest -Uri $url -Method Get -MaximumRedirection 5 -TimeoutSec 10 -ErrorAction Stop
+            $statusCode = $response.StatusCode
+            if ($statusCode -ge 200 -and $statusCode -lt 400) {
+              Write-Host "  OK ($statusCode via GET): $url"
+            } else {
+              Write-Host "  BROKEN ($statusCode): $url"
+              $brokenUrls += "$url (HTTP $statusCode)"
+            }
+          } catch {
+            $errCode = $null
+            if ($_.Exception.Response -and $_.Exception.Response.StatusCode) {
+              $errCode = [int]$_.Exception.Response.StatusCode
+            }
+            if ($errCode) {
+              Write-Host "  BROKEN ($errCode): $url"
+              $brokenUrls += "$url (HTTP $errCode)"
+            } else {
+              Write-Host "  BROKEN (connection failed): $url"
+              $brokenUrls += "$url (connection failed)"
+            }
+          }
+        }
+      }
+
+      if ($brokenUrls.Count -gt 0) {
+        $urlList = ($brokenUrls | ForEach-Object { "  - $_" }) -join "`n"
+        $lines = @(
+          "🚫 BLOCKED: Post contains broken site URL(s) that would show 404 to readers.",
+          "",
+          "Broken URLs:",
+          $urlList,
+          "",
+          "Fix these URLs before posting:",
+          "1. Verify the article/page exists and is published on your site",
+          "2. Check for typos in the URL path",
+          "3. If the page doesn't exist yet, publish it first or remove the link",
+          "",
+          "Governance: No social media post may go out with dead site links."
+        )
+        Write-Error ($lines -join "`n")
+        exit 1
+      }
+
+      Write-Host "All $($uniqueUrls.Count) site URL(s) validated successfully. Allowing post."
+      exit 0
