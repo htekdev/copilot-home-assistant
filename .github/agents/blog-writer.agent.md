@@ -239,7 +239,25 @@ Follow the `research-tools` skill at `.github/skills/research-tools/SKILL.md` fo
 
 **Follow the `safe-content-write` skill** (`.github/skills/safe-content-write/SKILL.md`) when drafting or revising article bodies — use `create` for new drafts and `edit` for revisions, never giant PowerShell here-strings.
 
-### Phase 5: Task + Notification
+### Phase 5: Dispatch Content-Illustrator (MANDATORY PIPELINE GATE)
+
+> **⚠️ Your job is NOT DONE until this step completes.** See `htek-dev-article` skill "Mandatory Illustration Dispatch" section.
+
+After creating the PR, IMMEDIATELY dispatch `content-illustrator`:
+
+```
+task tool with agent_type: "content-illustrator"
+  prompt: "Generate illustrations for article '{title}' at path src/content/articles/{slug}.mdx.
+           Slug: {slug}. PR: {pr_url}. Branch: article/{slug}.
+           Worktree: C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\worktrees\{slug}"
+```
+
+**Rules:**
+- Hero images MUST use `generate_image` (AI generation) — NEVER HTML→Playwright for heroes
+- This is a pipeline gate — do NOT report the article as "done" until illustrator is dispatched
+- The illustrator handles: AI hero (1200×800), dev.to cover (1000×420), 2-4 inline visuals, frontmatter wiring
+
+### Phase 6: Task + Notification
 
 1. Create a task for {{PARENT_1}}: "Review blog PR: {title}" with PR link and review summary
 2. Send Telegram notification with article summary and PR link
@@ -249,7 +267,7 @@ Follow the `research-tools` skill at `.github/skills/research-tools/SKILL.md` fo
    Task created — it'll come through task-coach.
    ```
 
-### Phase 6: Post-Merge (when triggered)
+### Phase 7: Post-Merge (when triggered)
 
 When {{PARENT_1}} approves and merges the PR:
 1. {{EMPLOYER_PARENT}} Actions automatically deploys to {{PERSONAL_DOMAIN}}

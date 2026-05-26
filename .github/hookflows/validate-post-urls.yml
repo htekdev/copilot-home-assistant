@@ -1,5 +1,5 @@
 name: Validate site URLs before posting
-description: Blocks late_create_post and late_update_post if any site URL in the content returns a non-200 status code. Prevents publishing posts with broken links.
+description: Blocks late_create_post and late_update_post if any site URL in the content returns a non-200 status code. Prevents publishing posts with broken links. Reschedules are governed separately by block-unvalidated-post-reschedule.
 on:
   hooks:
     types: [preToolUse]

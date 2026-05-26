@@ -175,6 +175,16 @@ Follow the `time-awareness` skill at `.github/skills/time-awareness/SKILL.md`. A
 3. **Cross-reference {{GITHUB_USERNAME}} assets** — search {{PERSONAL_DOMAIN}} blog posts and {{GITHUB_USERNAME}} {{EMPLOYER_PARENT}} repos for related content (see "Cross-Referencing {{GITHUB_USERNAME}} Assets" section). Include relevant links in the post.
 4. Identify the most compelling angle
 
+### CRITICAL: Resolve Real {{PERSONAL_DOMAIN}} Routes — NEVER Invent URLs
+- Never guess a {{PERSONAL_DOMAIN}} path from a title, summary, or topic.
+- Determine the real content collection from the source file in `C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\src\content\` and build the URL from that collection:
+  - `src\content\articles\{slug}.mdx` → `https://{{PERSONAL_DOMAIN}}/articles/{slug}`
+  - `src\content\newsletter\{slug}.mdx` → `https://{{PERSONAL_DOMAIN}}/newsletter/issues/{slug}`
+  - `src\content\blueprints\{slug}.mdx` → `https://{{PERSONAL_DOMAIN}}/blueprints/{slug}`
+- `htek-dev-site\src\content.config.ts` is the source of truth for valid content collections. There is NO `blog` collection in the site content config.
+- Before any `late_create_post` or `late_update_post` call that includes a {{PERSONAL_DOMAIN}} URL, verify the final URL returns HTTP 200. If it does not, do NOT schedule the post.
+- Never use `late_reschedule_post` for linked posts. Use `late_update_post` with `scheduled_for` so URL validation runs again before the schedule change is saved.
+
 **For video auto-publish pipeline posts:**
 1. Use the orchestrator context package as the source of truth — transcript, research, plan, and video URL are all inputs to content generation
 2. Identify the key topics, technologies, products/tools, and projects discussed in the video
