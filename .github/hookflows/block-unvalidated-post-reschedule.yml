@@ -1,0 +1,33 @@
+name: Force URL validation on post reschedule
+description: Blocks late_reschedule_post because it bypasses validate-post-urls. Rescheduling must go through late_update_post so all site links are revalidated before the new schedule is saved.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [late_reschedule_post]
+blocking: true
+env:
+  POST_ID_JSON: ${{ toJSON(event.tool.args.post_id) }}
+steps:
+  - name: Block reschedules that bypass URL validation
+    run: |
+      $postId = $null
+      if (-not [string]::IsNullOrWhiteSpace($env:POST_ID_JSON)) {
+        try { $postId = $env:POST_ID_JSON | ConvertFrom-Json } catch { $postId = $env:POST_ID_JSON }
+      }
+
+      $lines = @(
+        "🚫 BLOCKED: late_reschedule_post bypasses site URL validation.",
+        "",
+        "Use late_update_post instead and include the new scheduled_for/timezone.",
+        "That path re-runs validate-post-urls so every site link gets a fresh live 200-check before the schedule change is saved.",
+        "",
+        "Why this rule exists:",
+        "- Older queued posts may have been created before validate-post-urls existed",
+        "- Direct reschedules would let broken legacy links move forward without revalidation",
+        "- Brand safety requires every schedule-changing write to pass a live URL check",
+        "",
+        "Post ID: $postId"
+      )
+
+      Write-Error ($lines -join "`n")
+      exit 1

@@ -84,6 +84,7 @@ This is not optional. This is not "nice to have." This is the CORE governance me
 | `block-raw-openai-api` | preToolUse (MD hookflow) | Blocks `$OPENAI_API_KEY`/`api.openai.com` in commands → forces `generate_image` extension tool |
 | `validate-email-urls` | preToolUse (YAML hookflow) | Blocks `gmail_send` if any URL in body returns non-200 — prevents sending emails with broken links |
 | `validate-post-urls` | preToolUse (YAML hookflow) | Blocks `late_create_post`/`late_update_post` if any {{PERSONAL_DOMAIN}} URL in content returns non-200 |
+| `block-unvalidated-post-reschedule` | preToolUse (YAML hookflow) | Blocks `late_reschedule_post` → forces `late_update_post` so validate-post-urls re-runs before linked posts are re-scheduled |
 
 ---
 

@@ -542,6 +542,7 @@ function listTasks(args) {
   }));
 
   return `Found ${rows.length} task(s):\n\n` + formatTable(mapped, [
+    { key: "id", label: "ID" },
     { key: "st", label: "" },
     { key: "assignee", label: "Assignee" },
     { key: "title", label: "Task" },

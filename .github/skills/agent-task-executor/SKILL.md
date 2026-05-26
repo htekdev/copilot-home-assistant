@@ -112,27 +112,34 @@ ASSIGNEE: {task.assignee}
 INSTRUCTIONS:
 1. Load your memory tiers if you have them (data/agents/{agent-name}/core.md, working.md)
 2. Execute this task completely — no stubs, no TODOs, no partial work
-3. When finished, call complete_task(id="{task.id}") to mark it done
-4. If you cannot complete the task (missing info, blocked, needs human input):
-   - Call update_task(id="{task.id}", status="blocked", notes="Blocked because: {reason}")
-   - Do NOT leave it in "pending" state
+3. When finished, end your response with a clear status line:
+   - SUCCESS: "✅ TASK COMPLETE — {brief description of what was done}"
+   - BLOCKED: "🚫 TASK BLOCKED — {reason why it cannot be completed}"
+4. Do NOT call `complete_task` or `update_task` — the parent orchestrator handles task lifecycle
 
 IMPORTANT:
 - This task has surface="agent" — it was created FOR an agent to handle autonomously
-- Do NOT send Telegram messages to the primary assignee about this unless the task explicitly requires notification
+- Do NOT send Telegram messages to {{PARENT_1}} about this unless the task explicitly requires notification
 - Do NOT create new tasks unless the original task's scope genuinely requires subtasks
-- Focus. Execute. Complete.
+- Do NOT call `complete_task`, `update_task`, `list_tasks`, or any task management tool — these are NOT available in sub-agent context (SDK limitation). Just do the work and report status.
+- Focus. Execute. Report.
 ```
 
-### Step 5: Wait for Completion
+### Step 5: Wait for Completion & Handle Task Lifecycle
 
 After launching all agents in the batch:
 
 1. Use `read_agent(agent_id, wait=true, timeout=180)` for each agent
-2. Collect results — note which succeeded and which failed/blocked
+2. Parse the agent's final status line:
+   - If "✅ TASK COMPLETE" → call `complete_task(id="{task_id}")` in the PARENT session
+   - If "🚫 TASK BLOCKED" → call `update_task(id="{task_id}", status="blocked", notes="{reason from agent}")` in the PARENT session
+   - If agent errored/crashed → call `update_task(id="{task_id}", status="blocked", notes="Agent execution failed")` in the PARENT session
 3. If an agent times out (180s), check status with `read_agent(agent_id, wait=false)`
    - If still running, let it continue — don't kill it
    - Move on to the next batch
+   - Come back to mark the task done/blocked in the next cycle
+
+**CRITICAL:** Task lifecycle (`complete_task`, `update_task`) is ALWAYS handled by the parent orchestrator (platform-manager), NEVER by the sub-agent. Sub-agents do not have access to task management tools (SDK v1.0.47 limitation).
 
 ### Step 6: Report Results
 
@@ -147,9 +154,9 @@ Agent-Task Execution Results:
 ```
 
 **Notification rules:**
-- If ANY tasks were completed → send one batched summary to the primary assignee via Telegram
-- If ALL tasks were blocked/failed → send a brief alert to the primary assignee
-- If nothing was actionable (all skipped) → do NOT send a message
+- If ANY tasks were completed → send summary to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter
+- If ALL tasks were blocked/failed → send brief alert to {{PARENT_1}}
+- If nothing was actionable (all skipped) → do NOT message {{PARENT_1}}
 
 ### Step 7: Next Batch (if applicable)
 
@@ -182,8 +189,8 @@ If platform-manager handles a task directly:
 ## Anti-Patterns (NEVER do these)
 
 - ❌ Batch-executing 10+ tasks in a single agent prompt ("handle all these...")
-- ❌ Executing user-created tasks without explicit go-ahead from the request owner
-- ❌ Skipping `complete_task` after finishing — the task MUST be marked done
+- ❌ Executing user-created tasks without {{PARENT_1}}'s explicit go-ahead
+- ❌ Expecting sub-agents to call `complete_task` — they can't (SDK limitation). Parent handles it.
 - ❌ Creating new agent-surface tasks as "execution notes" — just do the work
 - ❌ Sending a Telegram for every individual task completion — batch the report
 - ❌ Executing tasks with future due dates that aren't yet actionable

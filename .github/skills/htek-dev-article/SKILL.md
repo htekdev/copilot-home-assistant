@@ -75,6 +75,8 @@ Before creating a PR, verify every item:
 - [ ] Multi-model review passed (all 🔴 issues resolved)
 - [ ] Slug doesn't conflict with existing articles
 - [ ] Tags follow established conventions
+- [ ] Content-illustrator dispatched after PR creation (MANDATORY pipeline gate)
+- [ ] Hero image will be AI-generated via `generate_image` (never HTML→Playwright for heroes)
 
 ## Article Structure
 
