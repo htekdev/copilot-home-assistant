@@ -1,5 +1,5 @@
 {
-  "timezone": "America/Chicago",
+  "timezone": "{{TIMEZONE}}",
   "_schedule_validation": {
     "_description": "Staggering strategy — minimum 3-minute gaps between jobs at the same hour. Priority order: heartbeat/task-coach (:00-:03), family care (:06-:10), daily lightweight (:10-:20), content pipeline (:30-:42), platform/dev (:45-:53). Last validated: 2026-05-24. NOTE: google-ads-daily-metrics remains at 17:43 as defense-in-depth, but browser isolation is now implemented via playwright-services extension (each service has its own profile at ~/.playwright-profiles/{service}/).",
     "_overlap_rules": [
@@ -26,17 +26,29 @@
     },
     {
       "id": "heartbeat",
-      "schedule": "0 7,9,11,13,15,17,19,21 * * *",
+      "schedule": "0 7,21 * * *",
       "enabled": true,
       "agent": "checkin",
-      "_slot": ":00 backbone ΓÇö lightweight, fires first"
+      "model": "claude-sonnet-4.6",
+      "_slot": ":00 backbone — FULL checkin at 7 AM + 9 PM only (cost opt: was 8x/day, now 2x full + 6x lightweight)"
+    },
+    {
+      "id": "heartbeat-lightweight",
+      "schedule": "0 9,11,13,15,17,19 * * *",
+      "enabled": true,
+      "agent": "checkin",
+      "model": "claude-haiku-4.5",
+      "_slot": ":00 backbone — lightweight pulse check (no full agent dispatch)",
+      "prompt": "LIGHTWEIGHT CHECK-IN — DO NOT dispatch all domain agents. This is a quick pulse, not a full orchestration. Only do: (1) Scan Gmail for urgent/time-sensitive emails in the last 2 hours. (2) Check Google Calendar for events starting in the next 2 hours that need a reminder. (3) Check ready_tasks(surface='human', status='pending') for any HIGH or URGENT priority tasks. If nothing urgent found, stay completely silent — do NOT send any Telegram message. Only message {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) if there is something genuinely urgent or time-sensitive. Skip: domain agent dispatches, working memory updates, full email categorization, non-urgent task serving."
     },
     {
       "id": "task-coach-nudge",
       "schedule": "3 7,9,11,13,15,17,19 * * *",
       "enabled": true,
       "agent": "task-coach",
-      "_slot": ":03 backbone ΓÇö fires right after heartbeat"
+      "model": "claude-haiku-4.5",
+      "_slot": ":03 backbone ΓÇö fires right after heartbeat",
+      "prompt": "Run the routine nudge cycle. FIRST: call ready_tasks(surface='human') and stop silently if nothing is ready for {{PARENT_1}} or {{PARENT_2}}. If ready tasks exist, serve exactly one clear next action, prefer the highest-priority unblockable task, and avoid repeating the last nudge unless urgency increased."
     },
     {
       "id": "nicu-care-checkin",
@@ -64,11 +76,11 @@
     },
     {
       "id": "linkedin-outreach-hourly",
-      "schedule": "18 9-17 * * 1-5",
+      "schedule": "18 9,11,13,15,17 * * 1-5",
       "enabled": true,
       "agent": "linkedin-outreach",
-      "_slot": ":18 backbone ΓÇö business hours outreach",
-      "prompt": "Load core.md, working.md, and outreach-log.json. Compute current CT time ΓÇö verify you are within business hours (Mon-Fri 9 AM - 5 PM CT). Open `playwright_service_open({ service: \"linkedin\" })` and check LinkedIn auth via the isolated LinkedIn browser session. Scan inbox for new replies and update outreach-log.json statuses. If a follow-up is due (3-5 business days since last message, max 2 nudges), send it through the isolated LinkedIn service. Otherwise, find ONE new prospect via Exa (exa-web_search_exa with category:people or exa_people_search_exa ΓÇö agentic DevOps, multi-agent, AI coding space). If Exa unavailable, fall back to web_fetch. Review the prospect's LinkedIn profile via the isolated LinkedIn service. Personalize a message using core.md templates as starting frameworks ΓÇö reference their role, company, recent work. Send through the isolated LinkedIn service. Log in outreach-log.json. Update working.md counters and pipeline. Append events.log. Only message {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) if notable replies received or auth/rate-limit issues."
+      "_slot": ":18 backbone - 5 weekday outreach cycles with Delivery Confidence Audit priority",
+      "prompt": "Load core.md, working.md, and outreach-log.json. Compute current CT time - verify you are within business hours (Mon-Fri 9 AM - 5 PM CT) and honor the 5/day cap. Open `playwright_service_open({ service: \"linkedin\" })` and check LinkedIn auth via the isolated LinkedIn browser session. Scan inbox for new replies and update outreach-log.json statuses. If a follow-up is due (3-5 business days since last message, max 2 nudges), send it through the isolated LinkedIn service. Otherwise, use the core.md priority router: default to `delivery-confidence-audit`, fall back to `agentic-development` only if no qualified audit prospect is ready. For Delivery Confidence Audit, prefer VP Engineering / Head of Platform / DevEx / CTO profiles at teams with verified {{EMPLOYER_PARENT}} Enterprise, Copilot, delivery-confidence, governance, release-quality, or handoff-friction signals. Find ONE new prospect via Exa for the chosen lane. If Exa is unavailable, skip new outbound and log the block rather than using web_fetch. Review the prospect's LinkedIn profile via the isolated LinkedIn service. Personalize a message using the matching core.md templates - reference their role, company, recent work, and verified platform signals only. Send through the isolated LinkedIn service. Log in outreach-log.json with `campaign_mode`. Update working.md counters, lane priority, and pipeline. Append events.log. Only message {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) if notable replies received or auth/rate-limit issues."
     },
     {
       "id": "agent-task-executor",
@@ -111,11 +123,11 @@
     },
     {
       "id": "harness-tracker-research",
-      "schedule": "36 6,9,12,15,18,21 * * *",
+      "schedule": "36 6,12,18 * * *",
       "enabled": true,
       "agent": "harness-tracker",
       "_slot": ":36 backbone ΓÇö heavy research (multi-agent)",
-      "prompt": "Run 3-hour multi-agent harness research cycle. Load memory tiers (data/agents/harness-tracker/core.md + working.md). Compute current CT time. CHECK ARTICLE: Verify all-agent-harnesses-live-comparison.mdx exists in C:\\Repos\\{{GITHUB_USERNAME}}\\htek-dev-site\\src\\content\\articles\\ ΓÇö if not, log 'article not yet created' and exit. PRE-RESEARCH: Run 1-2 broad Perplexity/Exa queries in main session (e.g., 'agent harness news [current month] 2026', 'new AI coding tool launch') ΓÇö save results to pass into sub-agent prompts. PHASE 1 RESEARCH: Launch 7 parallel explore agents via task tool, each covering one research category (pricing, releases, architecture, infrastructure, models, features, ecosystem). Each reads its previous research file from data/agents/harness-tracker/research/*.md, uses web_fetch for research, and overwrites its file with updated structured findings including source URLs. Pass pre-research results and brand safety rules to each. PHASE 2 SYNTHESIS: After all Phase 1 agents complete, launch 5 parallel general-purpose agents for synthesis (pricing-section, architecture-section, features-section, definition-section, changelog-section). Each reads relevant research files and produces article-ready markdown in research/synthesis/*.md. PHASE 3 WRITE: If any synthesis file reports meaningful changes, launch 1 general-purpose writer agent that reads all synthesis files, updates the article on htek-dev-site via start_dev_branch + edit + dev_add + dev_commit + create_vercel_pr. PHASE 4 ENRICH: Launch 1 general-purpose enrichment agent on the PR branch to inject internal {{PERSONAL_DOMAIN}} links, newsletter/blueprint CTAs, and SEO improvements using content-cross-reference skill. NOTIFY: Send {{PARENT_1}} the preview link via Telegram ({{TELEGRAM_PARENT_1}}, speak param). UPDATE MEMORY: Record cycle results in working.md, append events.log. SILENT if no meaningful changes found."
+      "prompt": "Run 3-hour multi-agent harness research cycle. Load memory tiers (data/agents/harness-tracker/core.md + working.md). Compute current CT time. CHECK ARTICLE: Verify all-agent-harnesses-live-comparison.mdx exists in C:\\Repos\\{{GITHUB_USERNAME}}\\htek-dev-site\\src\\content\\articles\\ ΓÇö if not, log 'article not yet created' and exit. PRE-RESEARCH: Run 1-2 broad Perplexity/Exa queries in main session (e.g., 'agent harness news [current month] 2026', 'new AI coding tool launch') ΓÇö save results to pass into sub-agent prompts. PHASE 1 RESEARCH: Launch 7 parallel explore agents via task tool, each covering one research category (pricing, releases, architecture, infrastructure, models, features, ecosystem). Each reads its previous research file from data/agents/harness-tracker/research/*.md, uses web_fetch for research, and overwrites its file with updated structured findings including source URLs. Pass pre-research results and brand safety rules to each. PHASE 2 SYNTHESIS: After all Phase 1 agents complete, launch 5 parallel general-purpose agents for synthesis (pricing-section, architecture-section, features-section, definition-section, changelog-section). Each reads relevant research files and produces article-ready markdown in research/synthesis/*.md. PHASE 3 WRITE: If any synthesis file reports meaningful changes, launch 1 general-purpose writer agent that reads all synthesis files, updates the article on htek-dev-site via start_dev_branch + edit + dev_add + dev_commit + create_vercel_pr. PHASE 4 ENRICH: Launch 1 general-purpose enrichment agent on the PR branch to inject internal {{PERSONAL_DOMAIN}} links, newsletter/blueprint CTAs, and SEO improvements using content-cross-reference skill. PHASE 5 AUTO-MERGE: After enrichment is complete, perform a sanity check on the PR ΓÇö review the diff (git diff main...HEAD), verify no broken markdown/frontmatter, confirm diff is a reasonable size (not an accidental full rewrite), and check the Vercel preview deployed successfully. If sanity check passes, merge the PR via dev_merge_pr. If it fails, do NOT merge ΓÇö notify {{PARENT_1}} with the issue. NOTIFY: After merge, send {{PARENT_1}} the LIVE article link (https://{{PERSONAL_DOMAIN}}/articles/all-agent-harnesses-live-comparison) via Telegram ({{TELEGRAM_PARENT_1}}, speak param) ΓÇö NOT the preview link. UPDATE MEMORY: Record cycle results in working.md, append events.log. SILENT if no meaningful changes found."
     },
     {
       "id": "content-blitz-hourly",
@@ -136,9 +148,10 @@
     },
     {
       "id": "skill-optimizer-scan",
-      "schedule": "45 8,16 * * *",
+      "schedule": "45 8 * * *",
       "enabled": true,
       "agent": "skill-optimizer",
+      "model": "claude-sonnet-4.6",
       "_slot": ":45 backbone ΓÇö platform optimization",
       "prompt": "Run hourly optimization scan. Load memory tiers first. Audit agents, skills, and extensions for: (1) stale or contradicting skills, (2) skill extraction opportunities from bloated agents, (3) orphaned skills with no agent references, (4) agents not referencing skills they should know about, (5) extensions that don't align with current skill/agent definitions. Use the research-tools skill hierarchy for any lookups. Resolve issues directly ΓÇö don't just flag them. Update working memory with findings. ALWAYS send a brief Telegram summary to {{PARENT_1}} (chat_id: {{TELEGRAM_PARENT_1}}) with speak parameter after each scan ΓÇö even if nothing was found. Include: scan number, changes made (or 'clean pass'), agent/skill counts, and any issues resolved."
     },
@@ -147,6 +160,7 @@
       "schedule": "48 8,13,18 * * *",
       "enabled": true,
       "agent": "repo-maintainer",
+      "model": "claude-sonnet-4.6",
       "_slot": ":48 backbone ΓÇö PR review cycle",
       "prompt": "Run PR review cycle. Scan all {{GITHUB_USERNAME}} repos for open PRs. Apply merge policy: auto-merge dependabot/bot PRs with green CI (squash + delete branch), review {{PARENT_1}}'s PRs and notify, close stale Copilot drafts >60 days. Max 10 auto-merges per run. Only message {{PARENT_1}} if actions were taken."
     },
@@ -155,16 +169,26 @@
       "schedule": "50 7,12,17 * * *",
       "enabled": true,
       "agent": "platform-manager",
+      "model": "claude-haiku-4.5",
       "_slot": ":50 backbone ΓÇö template trigger check",
-      "prompt": "Run check_scheduled_triggers from the action-tracker extension.This evaluates schedule-based template triggers (e.g., {{PARENT_2}}-shower at 7 PM daily). Auto-expand templates with auto_expand=true, suggest others via Telegram to {{PARENT_1}}. Quick check ΓÇö skip if nothing is due."
+      "prompt": "Run check_scheduled_triggers from the action-tracker extension. FIRST: treat this as an early-exit check — if nothing is due, stop immediately and stay silent. If triggers are due, auto-expand templates with auto_expand=true and suggest the rest via Telegram to {{PARENT_1}}."
     },
     {
       "id": "work-life-sync",
       "schedule": "53 6,12,18 * * 1-5",
       "enabled": true,
       "agent": "work-life-sync",
+      "model": "claude-haiku-4.5",
       "_slot": ":53 backbone ΓÇö calendar sync to Outlook",
-      "prompt": "Run calendar-to-Outlook availability sync. Load memory tiers. Compute current CT time. Check Google OAuth status ΓÇö if expired, create ONE re-auth task and stop. Fetch personal Google Calendar events (next 3 days). Filter: weekdays only, time-bound (or all-day with PTO keywords), future only. Compute delta against synced events in working memory. For new/changed/deleted events, send structured mesh message to msix-home with OOF block instructions (showAs=oof, private, no attendees, no Teams, timezone America/Chicago). Update sync state in working memory. Only message {{PARENT_1}} on errors. Update events.log."
+      "prompt": "Run calendar-to-Outlook availability sync. Load memory tiers. Compute current CT time. FIRST: check Google OAuth status — if expired, create ONE re-auth task and stop. Fetch personal Google Calendar events (next 3 days). Filter: weekdays only, time-bound (or all-day with PTO keywords), future only. Compute delta against synced events in working memory. If the delta is empty, stop silently before sending any mesh message. For new/changed/deleted events, send structured mesh message to msix-home with OOF block instructions (showAs=oof, private, no attendees, no Teams, timezone {{TIMEZONE}}). Update sync state in working memory. Only message {{PARENT_1}} on errors. Update events.log."
+    },
+    {
+      "id": "email-outreach-daily",
+      "schedule": "57 9 * * 1-5",
+      "enabled": true,
+      "agent": "email-outreach",
+      "_slot": ":57 weekdays ΓÇö Delivery Confidence Audit outbound",
+      "prompt": "Run the daily Delivery Confidence Audit email outreach cycle. Load core.md and working.md. Compute current CT time and verify this is a weekday business-hours run. FIRST process replies and opt-outs with gmail_search / gmail_read. If working.md shows the footer block is incomplete, create one high-priority task for {{PARENT_1}} to provide the compliant CAN-SPAM footer data, update working.md, and stop without sending. Then send due follow-ups at 48 hours and 7 days via gmail_reply. If the daily cap remains, research and qualify up to 5 new prospects matching the ICP: VP Engineering, Head of Platform, DevEx, or CTO at teams with verified {{EMPLOYER_PARENT}} Enterprise, Copilot, platform, delivery, or governance signals. Personalize from verified public context only. Send via gmail_send from {{PARENT_1}}.flores@{{PERSONAL_DOMAIN}}, recover thread IDs with gmail_search, update working.md sent log / counters / opt-outs / conversions, and append events.log. Never email excluded clients. Respect opt-outs immediately. Notify {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) only for warm replies, conversions, or compliance blockers."
     },
     {
       "id": "weekly-planner",
@@ -231,8 +255,9 @@
       "schedule": "0 10 * * *",
       "enabled": true,
       "agent": "task-coach",
+      "model": "claude-haiku-4.5",
       "_slot": "10:00 ΓÇö no recurring backbone at hour 10",
-      "prompt": "Run the Ask {{PARENT_2}} flow. Send {{PARENT_2}} ONE short message asking if there's anything {{PARENT_1}} should handle today. Parse her response into tasks if she replies. Do NOT follow up if no response. This is the daily {{PARENT_2}} task-source check."
+      "prompt": "Run the Ask {{PARENT_2}} flow. FIRST: check whether an unanswered Ask {{PARENT_2}} prompt was already sent in the last 24 hours; if so, stop and avoid duplicating the ping. Otherwise send {{PARENT_2}} ONE short message asking if there's anything {{PARENT_1}} should handle today. Parse her response into tasks if she replies. Do NOT follow up if no response. This is the daily {{PARENT_2}} task-source check."
     },
     {
       "id": "email-triage",
@@ -294,6 +319,7 @@
       "schedule": "16 8 * * *",
       "enabled": true,
       "agent": "repo-maintainer",
+      "model": "claude-sonnet-4.6",
       "_slot": "8:16 ΓÇö after content-analytics :13, before linkedin :18",
       "prompt": "Run issue triage cycle. Search for untriaged issues across {{GITHUB_USERNAME}} repos (no:label or no:assignee). Auto-label by content pattern. Assign straightforward bugs/features/docs to Copilot. Flag security issues to {{PARENT_1}} immediately. Close stale issues >180 days with no activity. Don't close content-management issues (content backlog). Only message {{PARENT_1}} if actions were taken."
     },
@@ -335,13 +361,14 @@
       "enabled": true,
       "agent": "context-auditor",
       "_slot": "Sun 20:00 ΓÇö no heartbeat at 20, first in the hour",
-      "prompt": "Run FULL weekly context audit. Load memory. Collect ALL files in audit scope: constitution.md, copilot-instructions.md, standing-orders.md, all .github/agents/*.agent.md, all data/agents/*/core.md, all data/agents/*/working.md, cron.json. Measure file sizes and estimate token counts. Launch parallel sub-agents with different models: (1) claude-sonnet-4.5 for contradiction detection, (2) claude-haiku-4.5 for redundancy/bloat analysis, (3) claude-opus-4.5 for skill extraction opportunities. Synthesize findings. Auto-fix safe issues (stale dates, typos, dead references, exact duplicates). Create tasks for complex fixes needing approval. Commit auto-fixes via dev_add + dev_commit + dev_push. Send structured report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) with: files scanned, issues by severity, auto-fixes applied, top findings, token budget per agent. Update memory."
+      "prompt": "Run FULL weekly context audit. Load memory. Collect ALL files in audit scope: constitution.md, copilot-instructions.md, standing-orders.md, all .{{EMPLOYER_PARENT}}/agents/*.agent.md, all data/agents/*/core.md, all data/agents/*/working.md, cron.json. Measure file sizes and estimate token counts. Launch parallel sub-agents with different models: (1) claude-sonnet-4.5 for contradiction detection, (2) claude-haiku-4.5 for redundancy/bloat analysis, (3) claude-opus-4.5 for skill extraction opportunities. Synthesize findings. Auto-fix safe issues (stale dates, typos, dead references, exact duplicates). Create tasks for complex fixes needing approval. Commit auto-fixes via dev_add + dev_commit + dev_push. Send structured report to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) with: files scanned, issues by severity, auto-fixes applied, top findings, token budget per agent. Update memory."
     },
     {
       "id": "context-audit-daily",
       "schedule": "5 6 * * *",
       "enabled": true,
       "agent": "context-auditor",
+      "model": "claude-sonnet-4.6",
       "_slot": "6:05 ΓÇö after morning-briefing :00",
       "prompt": "Run QUICK daily context scan. Load memory. Focus on: (1) Contradiction check ΓÇö scan foundational docs vs agent definitions for rule conflicts. (2) Working memory freshness ΓÇö flag any data/agents/*/working.md not updated in 3+ days that has an active cron job. (3) Cron alignment ΓÇö verify every cron.json agent entry has a matching .agent.md file. (4) AGENT-TASK SELF-CHECK: query list_tasks(created_by='context-auditor', surface='agent', status='pending') ΓÇö execute any tasks you can handle (fix stale refs, update docs). Mark done via complete_task when finished. No auto-fixes on other items. Accumulate findings for weekly audit. Only message {{PARENT_1}} ({{TELEGRAM_PARENT_1}}) if critical contradictions found. Update memory."
     },
@@ -375,7 +402,7 @@
       "enabled": true,
       "agent": "content-creative",
       "_slot": "12:00 weekdays ΓÇö no heartbeat at 12, first in the hour",
-      "prompt": "Daily {{PERSONAL_DOMAIN}} article promotion on LinkedIn (SEO/backlink workflow). Load your memory. Compute current CT time. Read data/agents/content-creative/article-promo-log.json to see recently promoted articles. Browse the {{PERSONAL_DOMAIN}} article catalog by running: Get-ChildItem 'C:\\Repos\\{{GITHUB_USERNAME}}\\htek-dev-site\\src\\content\\articles' -Filter '*.mdx' | Where-Object { $_.Name -notmatch 'weekly' }. EXCLUDE weekly roundup articles (azure-weekly, github-weekly, vscode-weekly, visual-studio-weekly, copilot-cli-weekly). Pick ONE evergreen article that: (1) was NOT promoted in the last 30 days (check the log), (2) is high-value thought leadership, (3) varies in pillar from yesterday's pick. Read the chosen article's frontmatter and first 50 lines to understand its content. Write a LinkedIn post that: hooks with a bold insight from the article, delivers 2-3 key takeaways in {{PARENT_1}}'s voice, ends with a CTA pointing to the full article on {{PERSONAL_DOMAIN}}. INCLUDE the article URL in the post body (e.g., https://{{PERSONAL_DOMAIN}}/articles/SLUG) ΓÇö the goal is SEO backlinks so the link MUST be present. Run brand safety check per copilot-brand-safety skill. Generate an AI infographic image via the image-generation skill summarizing the article's key points. Upload image to Late via presign. Schedule the post for the next available LinkedIn slot (target 12:30 PM CT). Update article-promo-log.json with the promoted article slug and date. Send {{PARENT_1}} a preview via Telegram with speak parameter. Update working memory."
+      "prompt": "Daily {{PERSONAL_DOMAIN}} article promotion on LinkedIn (SEO/backlink workflow). Load your memory. Compute current CT time. Read data/agents/content-creative/article-promo-log.json to see recently promoted articles. Browse the {{PERSONAL_DOMAIN}} article catalog by running: Get-ChildItem 'C:\\Repos\\{{GITHUB_USERNAME}}\\htek-dev-site\\src\\content\\articles' -Filter '*.mdx' | Where-Object { $_.Name -notmatch 'weekly' }. EXCLUDE weekly roundup articles (azure-weekly, {{EMPLOYER_PARENT}}-weekly, vscode-weekly, visual-studio-weekly, copilot-cli-weekly). Pick ONE evergreen article that: (1) was NOT promoted in the last 30 days (check the log), (2) is high-value thought leadership, (3) varies in pillar from yesterday's pick. Read the chosen article's frontmatter and first 50 lines to understand its content. Write a LinkedIn post that: hooks with a bold insight from the article, delivers 2-3 key takeaways in {{PARENT_1}}'s voice, ends with a CTA pointing to the full article on {{PERSONAL_DOMAIN}}. INCLUDE the article URL in the post body (e.g., https://{{PERSONAL_DOMAIN}}/articles/SLUG) ΓÇö the goal is SEO backlinks so the link MUST be present. Run brand safety check per copilot-brand-safety skill. Generate an AI infographic image via the image-generation skill summarizing the article's key points. Upload image to Late via presign. Schedule the post for the next available LinkedIn slot (target 12:30 PM CT). Update article-promo-log.json with the promoted article slug and date. Send {{PARENT_1}} a preview via Telegram with speak parameter. Update working memory."
     },
     {
       "id": "entrepreneur-coach-daily",
@@ -390,6 +417,7 @@
       "schedule": "25 21 * * *",
       "enabled": true,
       "agent": "template-sync",
+      "model": "claude-haiku-4.5",
       "_slot": "21:25 ΓÇö after nightly-reflection :10, before harness :36",
       "prompt": "Run daily template sync. Diff {{FAMILY_NAME}}-family against copilot-home-assistant, strip PII, and create/update sync PR. Follow the progressive sync strategy. Check working memory for current state and what's next. Load pii-mapping.json before processing files."
     },
@@ -406,14 +434,23 @@
       "schedule": "35 8 * * 1",
       "enabled": true,
       "agent": "cloud-advisor",
-      "_slot": "Mon 8:35 ΓÇö after realtor-team :30",
+      "_slot": "Mon 8:35 — after realtor-team :30",
       "prompt": "Run weekly AWS cost audit. Load memory tiers. Scan all regions for resources: EC2 instances (running + stopped), unattached EBS volumes, unassociated Elastic IPs, RDS instances, S3 buckets without lifecycle policies, idle Lambda functions. Pull Cost Explorer data for current month vs last month. Auto-cleanup: delete unattached EBS volumes, release unassociated EIPs, abort stale multipart uploads. Calculate total waste eliminated. Create tasks for optimizations requiring approval (instance termination, rightsizing). Send structured cost report to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter. Update working memory with new inventory and cost data."
+    },
+    {
+      "id": "platform-cost-optimization",
+      "schedule": "0 7 * * *",
+      "enabled": true,
+      "agent": "cost-optimizer",
+      "_slot": "Daily 7:00 AM — platform cost analysis before morning briefing",
+      "prompt": "Run daily platform cost optimization cycle. Load memory tiers from data/agents/cost-optimizer/. STEP 1 — ANALYZE: Query session_store_sql for last 24h token usage by model, agent launch counts, and no-op detection (agents with <500 output tokens). STEP 2 — COMPARE: Check against baselines in working.md. Flag any agent consuming >20% more than its 7-day average. STEP 3 — MAP: Cross-reference findings with data/specs/cost-efficiency-v1.md recommendations. Identify Phase 1 quick wins not yet implemented. STEP 4 — ACT: Implement Tier 1 changes autonomously — add model overrides to cron.json for simple-task agents (task-coach, PR rebases, template-scheduler, work-life-sync → claude-haiku-4.5), reduce frequency for agents with >60% no-op rate, add early-exit checks to prompts. NEVER touch protected tiers (nicu-care, wellness-coach, health-coach, content-*, entrepreneur-*, coding-agent, finance-manager). STEP 5 — COMMIT: dev_add → dev_commit → dev_push any cron.json changes. STEP 6 — REPORT: Send daily cost summary to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}) with speak parameter. Include: top spenders, changes made, estimated savings. STEP 7 — TRACK: Update working.md savings ledger with today's changes."
     },
     {
       "id": "article-maintenance-daily",
       "schedule": "10 6 * * *",
       "enabled": true,
       "agent": "article-maintenance",
+      "model": "claude-sonnet-4.6",
       "_slot": "6:10 ΓÇö after context-audit :05",
       "prompt": "Daily article maintenance run. Load memory tiers first (core.md + working.md). Check where you left off in the tag backlog. Process next batch of 5-10 untagged articles: read each article's content, assign 3-6 tags from the taxonomy in core.md, update frontmatter. Run SEO spot-check on 3-5 random articles (description length, title length, heading structure). Check 2-3 articles for broken internal links (verify linked article slugs exist). Commit all changes to htek-dev-site and push directly to main. Update working.md with progress (articles tagged, issues found, next batch). Only notify {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, use speak param) if something actionable was found (broken links, major SEO gaps, milestone reached). Silent otherwise."
     },
@@ -446,7 +483,7 @@
       "enabled": true,
       "agent": "google-ads-manager",
       "_slot": "17:43 — defense-in-depth stagger after linkedin-outreach last cycle (:18). Browser isolation is now implemented via playwright-services extension (separate profiles per service), so concurrent access would work, but schedule separation is kept as extra safety. End-of-day also captures a full day of ad data.",
-      "prompt": "Daily metrics check and exploration run. Load memory tiers (core.md + working.md). Compute current CT time. Follow the Daily Metrics Check Workflow from your agent definition. Phase 1: Open `playwright_service_open({ service: \"google-ads\" })` and run the auth check via the isolated Google Ads browser session at ads.google.com/aw/campaigns. If not authenticated, notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) and stop. Phase 2: Dismiss ad blocker dialog, collect campaign metrics (impressions, clicks, CTR, conversions, cost). Compare against previous day's snapshot in working.md. Phase 3: Check conversion status for all 5 actions. Check Google tag hit count. Phase 4: Pick ONE unexplored page from the exploration queue in .github/skills/google-ads-playwright/SKILL.md ΓÇö explore it, document URL, selectors, data available. Update the skill SKILL.md with findings. Phase 5: Update working.md with today's metrics snapshot, exploration progress. Append events.log. Send concise Telegram summary ({{TELEGRAM_PARENT_1}}, speak param) ΓÇö lead with metrics, then deltas, then exploration findings. Silent if no campaigns and no notable findings."
+      "prompt": "Daily metrics check and exploration run. Load memory tiers (core.md + working.md). Compute current CT time. Follow the Daily Metrics Check Workflow from your agent definition. Phase 1: Open `playwright_service_open({ service: \"google-ads\" })` and run the auth check via the isolated Google Ads browser session at ads.google.com/aw/campaigns. If not authenticated, notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) and stop. Phase 2: Dismiss ad blocker dialog, collect campaign metrics (impressions, clicks, CTR, conversions, cost). Compare against previous day's snapshot in working.md. Phase 3: Check conversion status for all 5 actions. Check Google tag hit count. Phase 4: Pick ONE unexplored page from the exploration queue in .{{EMPLOYER_PARENT}}/skills/google-ads-playwright/SKILL.md ΓÇö explore it, document URL, selectors, data available. Update the skill SKILL.md with findings. Phase 5: Update working.md with today's metrics snapshot, exploration progress. Append events.log. Send concise Telegram summary ({{TELEGRAM_PARENT_1}}, speak param) ΓÇö lead with metrics, then deltas, then exploration findings. Silent if no campaigns and no notable findings."
     },
     {
       "id": "google-ads-weekly-report",
@@ -468,8 +505,9 @@
       "schedule": "40 7 * * *",
       "enabled": true,
       "agent": "data-optimizer",
+      "model": "claude-haiku-4.5",
       "_slot": "7:40 ΓÇö after illustrator :33",
-      "prompt": "Daily maintenance scan ΓÇö identify raw-edit patterns on JSON data files from the last 24 hours. Load memory tiers (core.md + working.md). Use session_store_sql to find recent edit/create tool calls on data/*.json files (24h lookback). Cross-reference with file sizes and multi-agent write patterns. For each candidate found: check if already governed (data/protected-files.json), check if an extension already handles it, assess governance criteria (size, frequency, multi-agent, schema needs). Verify existing governed files are healthy (no raw-edit violations). Update working.md with findings. If a strong candidate is found (meets 2+ criteria), write a migration spec to data/specs/. Send brief findings to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) only if actionable candidates found."
+      "prompt": "Daily maintenance scan. EARLY-EXIT: Query session_store_sql for edit/create tool calls on data/*.json in last 24h ΓÇö if zero results, respond 'No data file edits ΓÇö nothing to audit' and stop immediately. OTHERWISE: Identify raw-edit patterns on JSON data files from the last 24 hours. Load memory tiers (core.md + working.md). Use session_store_sql to find recent edit/create tool calls on data/*.json files (24h lookback). Cross-reference with file sizes and multi-agent write patterns. For each candidate found: check if already governed (data/protected-files.json), check if an extension already handles it, assess governance criteria (size, frequency, multi-agent, schema needs). Verify existing governed files are healthy (no raw-edit violations). Update working.md with findings. If a strong candidate is found (meets 2+ criteria), write a migration spec to data/specs/. Send brief findings to {{PARENT_1}} via Telegram ({{TELEGRAM_PARENT_1}}, speak param) only if actionable candidates found."
     },
     {
       "id": "sms-outreach",
@@ -483,40 +521,55 @@
       "schedule": "55 20 * * *",
       "enabled": true,
       "agent": "quality-agent",
+      "model": "claude-sonnet-4.6",
       "_slot": "20:55 — after data-optimizer :00, before nightly-reflection 21:10",
       "prompt": "Daily quality and taste review. Load memory tiers (core.md + working.md). Query session_store_sql for all agent sessions from the last 24 hours. Score each on tool efficiency (excessive calls, PowerShell overuse, redundant searches), output quality (vague tasks, poor formatting, robotic messages), taste (brand consistency, communication polish, visual standards), and skill usage (reinventing vs leveraging existing). Identify top 3 issues by impact. For each issue, propose the correct fix layer (hookflow, extension, skill, standing order, memory). Check if previous proposals were implemented — verify and close. Update pattern catalog and working memory. Only message {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) if HIGH-impact findings found (score ≤ 2 on any dimension for 3+ agents, or a systemic pattern). Create agent-surface tasks for platform-manager for any proposed fixes."
     },
     {
       "id": "pr-8524-rebase",
-      "schedule": "57 1,7,13,19 * * *",
+      "schedule": "57 7,19 * * *",
       "enabled": true,
       "agent": "coding-agent",
-      "_slot": "1:57/7:57/13:57/19:57 — temporary PR maintenance, self-removes on merge/close",
-      "prompt": "PR #8524 maintenance on github/copilot-agent-runtime (branch: fix/honor-immediate-mode-during-processing). Worktree: C:\\Repos\\{{GITHUB_USERNAME}}\\copilot-agent-runtime\\workdir\\fix--honor-immediate-mode-during-processing. Steps: (1) Check PR status via gh pr view 8524 --repo github/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8524-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to the worktree and run git fetch origin main && git rebase origin/main. (3) If rebase succeeds with no conflicts, force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8524 --repo github/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
+      "model": "claude-haiku-4.5",
+      "_slot": "7:57/19:57 — temporary PR maintenance, self-removes on merge/close",
+      "prompt": "PR #8524 maintenance on {{EMPLOYER_PARENT}}/copilot-agent-runtime (branch: fix/honor-immediate-mode-during-processing). Worktree: C:\\Repos\\{{GITHUB_USERNAME}}\\copilot-agent-runtime\\workdir\\fix--honor-immediate-mode-during-processing. Steps: (1) Check PR status via gh pr view 8524 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8524-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to the worktree and run git fetch origin main && git rebase origin/main. (3) If rebase succeeds with no conflicts, force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8524 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
     },
     {
       "id": "pr-8656-rebase",
-      "schedule": "53 2,8,14,20 * * *",
+      "schedule": "53 8,20 * * *",
       "enabled": true,
       "agent": "coding-agent",
-      "_slot": "2:53/8:53/14:53/20:53 — temporary PR maintenance, self-removes on merge/close",
-      "prompt": "PR #8656 maintenance on github/copilot-agent-runtime (branch: feat/plugin-extensions-support). Steps: (1) Check PR status via gh pr view 8656 --repo github/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8656-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to C:\\Repos\\github\\copilot-agent-runtime and run git fetch origin main && git checkout feat/plugin-extensions-support && git rebase origin/main. (3) If rebase succeeds with no conflicts,       force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8656 --repo github/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
+      "model": "claude-haiku-4.5",
+      "_slot": "8:53/20:53 — temporary PR maintenance, self-removes on merge/close",
+      "prompt": "PR #8656 maintenance on {{EMPLOYER_PARENT}}/copilot-agent-runtime (branch: feat/plugin-extensions-support). Steps: (1) Check PR status via gh pr view 8656 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8656-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to C:\\Repos\\{{EMPLOYER_PARENT}}\\copilot-agent-runtime and run git fetch origin main && git checkout feat/plugin-extensions-support && git rebase origin/main. (3) If rebase succeeds with no conflicts,       force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8656 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
     },
     {
       "id": "pr-8657-rebase",
-      "schedule": "47 3,9,15,21 * * *",
+      "schedule": "47 9,21 * * *",
       "enabled": true,
       "agent": "coding-agent",
-      "_slot": "3:47/9:47/15:47/21:47 — temporary PR maintenance, self-removes on merge/close",
-            "prompt": "PR #8657 maintenance on github/copilot-agent-runtime (branch: fix/queue-priority-user-over-scheduled). Worktree: C:\\Repos\\{{GITHUB_USERNAME}}\\copilot-agent-runtime\\workdir\\fix--queue-priority-user-over-scheduled. Steps: (1) Check PR status via gh pr view 8657 --repo github/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8657-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to the worktree and run git fetch origin main && git rebase origin/main. (3) If rebase succeeds with no conflicts, force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8657 --repo github/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
+      "model": "claude-haiku-4.5",
+      "_slot": "9:47/21:47 — temporary PR maintenance, self-removes on merge/close",
+            "prompt": "PR #8657 maintenance on {{EMPLOYER_PARENT}}/copilot-agent-runtime (branch: fix/queue-priority-user-over-scheduled). Worktree: C:\\Repos\\{{GITHUB_USERNAME}}\\copilot-agent-runtime\\workdir\\fix--queue-priority-user-over-scheduled. Steps: (1) Check PR status via gh pr view 8657 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8657-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to the worktree and run git fetch origin main && git rebase origin/main. (3) If rebase succeeds with no conflicts, force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8657 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
+    },
+    {
+      "id": "actions-debugger-daily",
+      "schedule": "25 6 * * *",
+      "enabled": true,
+      "agent": "actions-debugger-maintainer",
+      "model": "claude-sonnet-4.6",
+      "_slot": "6:25 — after daily-finance-review :20, before harness-tracker :36",
+      "prompt": "Daily error database expansion cycle. Load memory tiers (data/agents/actions-debugger-maintainer/core.md + working.md). Compute current CT time. STEP 1 — INVENTORY: List all existing error files in {{GITHUB_USERNAME}}/actions-debugger errors/ directory via {{EMPLOYER_PARENT}} API to get current IDs and avoid duplicates. STEP 2 — RESEARCH: Use the next research strategy from the rotation in working.md. Search {{EMPLOYER_PARENT}} Issues on actions/* repos, Stack Overflow [{{EMPLOYER_PARENT}}-actions], and {{EMPLOYER_PARENT}} Community for real errors developers encounter. Use web_fetch for research (MCP tools not available in sub-agents). Find 3-5 well-documented error patterns not yet in the database. STEP 3 — WRITE: Create YAML error entries matching the schema in core.md exactly. Every entry needs: id, title, category, severity, tags, patterns (with regex+flags), error_messages, root_cause, fix, fix_code, prevention, docs. STEP 4 — PR: Clone or cd to {{GITHUB_USERNAME}}/actions-debugger. Create a branch via start_dev_branch (name: add-errors-YYYY-MM-DD). Add YAML files to errors/{category}/. Commit via dev_add + dev_commit + dev_push. Create PR with title 'feat: add N new error entries (categories)' and body listing each entry. STEP 5 — UPDATE: Update working.md with entries added, next ID numbers, research strategy rotation, and topics completed. Advance research strategy rotation. Append events.log. STEP 6 — NOTIFY: Send {{PARENT_1}} a brief Telegram ({{TELEGRAM_PARENT_1}}, speak param) with PR link, entry count, and categories. If no good candidates found, send a brief 'clean pass' and still advance the rotation. NEVER use raw git commands — always dev_add, dev_commit, dev_push, start_dev_branch."
     },
     {
       "id": "pr-8658-rebase",
-      "schedule": "43 4,10,16,22 * * *",
+      "schedule": "43 10,22 * * *",
       "enabled": true,
       "agent": "coding-agent",
-      "_slot": "4:43/10:43/16:43/22:43 — temporary PR maintenance, self-removes on merge/close",
-            "prompt": "PR #8658 maintenance on github/copilot-agent-runtime (branch: feat/schedule-auto-stop-and-cron). Steps: (1) Check PR status via gh pr view 8658 --repo github/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8658-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to C:\\Repos\\github\\copilot-agent-runtime and run git fetch origin main && git checkout feat/schedule-auto-stop-and-cron && git rebase origin/main. (3) If rebase succeeds with no conflicts, force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8658 --repo github/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
+      "model": "claude-haiku-4.5",
+      "_slot": "10:43/22:43 — temporary PR maintenance, self-removes on merge/close",
+            "prompt": "PR #8658 maintenance on {{EMPLOYER_PARENT}}/copilot-agent-runtime (branch: feat/schedule-auto-stop-and-cron). Steps: (1) Check PR status via gh pr view 8658 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json state. If merged or closed, remove this cron entry from cron.json (id: pr-8658-rebase), commit via dev_add + dev_commit + dev_push, and stop. (2) If open, cd to C:\\Repos\\{{EMPLOYER_PARENT}}\\copilot-agent-runtime and run git fetch origin main && git checkout feat/schedule-auto-stop-and-cron && git rebase origin/main. (3) If rebase succeeds with no conflicts, force-push via dev_push --force. (4) If conflicts exist, attempt resolution — if trivial (whitespace, imports), resolve and continue rebase; if non-trivial, abort rebase and notify {{PARENT_1}} ({{TELEGRAM_PARENT_1}}, speak param) with conflict details. (5) Check for review comments via gh pr view 8658 --repo {{EMPLOYER_PARENT}}/copilot-agent-runtime --json reviews,comments — if actionable feedback exists, address it, commit, and push. Do NOT message {{PARENT_1}} unless there are conflicts or review comments requiring his input."
     }
   ]
 }
+
