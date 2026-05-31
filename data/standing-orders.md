@@ -38,6 +38,32 @@ Profiles with full details are in `data/family/`
 - **Family Time restrictions were removed by {{PARENT_1}}.** Do not block, queue, or suppress messages to {{PARENT_1}} during the old 5:00 PM – 8:30 PM CT window.
 - **Quiet Hours still apply:** 10 PM – 6 AM CT for non-urgent notifications.
 
+## Agent Dispatch — Task Tool Only (CRITICAL — from {{PARENT_1}}, 2026-05-22)
+
+- **ALWAYS use the `task` tool directly** for launching agents. With `mode: "background"` for non-blocking dispatch.
+- **`dispatch_task` was removed.** It no longer exists as a tool. Do NOT reference it, suggest it, or use it.
+- **checkin and all orchestrators** must use `task` with `mode: "background"` — never `dispatch_task`.
+- **Anti-pattern:** `dispatch_task(prompt: "...", agent_type: "coding-agent")` ← DOES NOT EXIST
+- **Correct pattern:** `task(agent_type: "coding-agent", prompt: "...", mode: "background")`
+- The `block-sync-task` hookflow was also removed — sync task calls are now allowed when needed.
+
+## Adaptive Stasis Detection (Cost Optimization — from quality-agent, 2026-07-07)
+
+**Problem:** Cron-dispatched agents in maintenance/blocked mode waste tokens by spinning up hourly just to confirm nothing changed.
+
+**Pattern for agents in stasis:**
+1. Add a `## Stasis Tracking` section to the agent's `working.md` with fields: `stasis_consecutive_days`, `stasis_reason`, `stasis_since`, `last_real_work`
+2. Add a `## Stasis Detection` section to the agent's `.agent.md` as the FIRST check every session
+3. If `stasis_consecutive_days >= 5` AND no new input → log stasis to events.log, increment counter, EXIT (≤2 turns)
+4. If new input exists → reset counter to 0, proceed normally
+
+**What resets stasis:** Direct {{PARENT_1}} message, assigned task, new {{EMPLOYER_PARENT}} activity on the repo, blocker resolved, or explicit cron prompt with new instructions.
+
+**Currently active on:** `carplay` (day 21+), `milk-mama` (day 14+)
+**Implemented:** 2026-07-07 by platform-manager (Q-010)
+
+**When to add stasis detection to other agents:** Any agent with 5+ consecutive cron dispatches where it exits without doing work.
+
 ## Auto-Action Rules
 
 ### DO handle autonomously:
@@ -79,6 +105,20 @@ Profiles with full details are in `data/family/`
 - Priority: Perplexity (search/reason/deep_research) → Exa (web_search_exa/crawling_exa/get_code_context_exa) → {{EMPLOYER_PARENT}} MCP tools → MS Learn → web_search (last resort)
 - For code/repo research: use {{EMPLOYER_PARENT}} MCP tools (search_code, get_file_contents, list_issues)
 - See `.{{EMPLOYER_PARENT}}/skills/research-tools/SKILL.md` for full hierarchy
+
+## Context-Dependent Sub-Agent Dispatch (CRITICAL — Q-014 fix, 2026-05-30)
+
+**When dispatching a sub-agent to draft, compose, or generate content for a SPECIFIC PERSON based on prior conversation history:**
+
+1. **The ORCHESTRATOR must look up context FIRST** via `session_store_sql` before building the dispatch prompt.
+   - Search turns for the person's name, topic, or relevant identifiers (last 7 days)
+   - If no relevant context found → create a clarification task, do NOT dispatch a sub-agent that will invent context
+2. **Inject found context INTO the dispatch prompt** — sub-agents have no session history.
+   - Template: `"You are drafting [content type] for [person]. Context from recent session history: [injected facts]. Use ONLY this context. Do NOT invent or assume anything not listed here."`
+3. **Never delegate context-discovery to the sub-agent** — by the time it runs, the context is gone.
+4. **Root cause of Q-014 (2026-05-29):** Main session dispatched a sub-agent to "draft an Ahis message" without injecting what Ahis had discussed. Sub-agent invented content → {{PARENT_1}} received a wrong, confusing message.
+
+**Applies to:** Any agent dispatching sub-agents for drafts, summaries, or personalized content about someone not directly in the current dispatch prompt.
 
 ### MCP Tools in Sub-Agents (CRITICAL — from {{PARENT_1}}, 2026-05-11)
 - **MCP server tools (Perplexity, Exa, {{EMPLOYER_PARENT}} MCP) do NOT propagate to sub-agents launched via `task` tool.**
@@ -151,6 +191,13 @@ This overrides the old Tier 3 "propose first" model for the following categories
 - Public-platform replies and comment management are owned by content/social agents and should be handled autonomously unless {{PARENT_1}} explicitly asks to review or personally answer one.
 - If a human-facing reply/comment task gets created for {{PARENT_1}}, cancel it or move it off the human queue immediately.
 
+## Social Image Style Alignment (CRITICAL — from {{PARENT_1}}, 2026-07-03)
+- LinkedIn and other social post images must match the **{{PERSONAL_DOMAIN}} cover page / hero image aesthetic**.
+- Use the **Luminous Void** palette with dark navy-charcoal backgrounds, subtle gradients, blue-led accents, and a premium editorial feel.
+- Include subtle `{{PERSONAL_DOMAIN}}` branding.
+- **NEVER** use neon style, bright neon colors, garish glow, cyberpunk treatments, or flashy visual effects.
+- Social images should feel like site hero art adapted for social format — polished and professional, not loud.
+
 ## Proactive Comment Engagement (STANDING ORDER — from {{PARENT_1}}, 2026-05-09)
 
 **"The content-analytics agent should be actively replying to comments, not just tracking analytics."** — {{PARENT_1}}
@@ -158,7 +205,7 @@ This overrides the old Tier 3 "propose first" model for the following categories
 **content-analytics agent must ACTIVELY reply to comments** across all platforms using `late_reply_comment` (cross-platform) and YouTube MCP tools. This is a primary function, not a secondary one.
 
 **Reply guidelines:**
-- Professional {{{{EMPLOYER_PARENT}}_USERNAME}} brand voice — friendly developer-to-developer, first person as {{PARENT_1}}
+- Professional {{GITHUB_USERNAME}} brand voice — friendly developer-to-developer, first person as {{PARENT_1}}
 - **Include source links** — link to {{PERSONAL_DOMAIN}} blog posts, YouTube videos, official docs, {{EMPLOYER_PARENT}} repos
 - Answer questions helpfully, thank positive feedback, acknowledge constructive criticism
 - Per-platform etiquette: LinkedIn=professional, Twitter=casual, YouTube=friendly, TikTok=very casual
@@ -193,8 +240,9 @@ This overrides the old Tier 3 "propose first" model for the following categories
 **ALL agents MUST use dev-workflow extension tools for git operations. NEVER use raw git commands in powershell.** This includes sub-agents launched via `task` tool.
 
 ### PR Shares Require Vercel Preview Links (CRITICAL — from {{PARENT_1}}, 2026-05-21)
-- Any `telegram_send_message` to {{PARENT_1}} that references an {{{{EMPLOYER_PARENT}}_USERNAME}} PR must include a Vercel preview URL in the same message.
-- Do not send PR-only notifications. {{PARENT_1}} needs the deployed preview link in the same Telegram message so he can review immediately.
+- Any `telegram_send_message` to {{PARENT_1}} that references a **Vercel-connected** PR (`htek-dev-site`, `blackout-pickleball`, `carplay-mobile-detail`) must include a Vercel preview URL in the same message.
+- Do not send PR-only notifications for those repos. {{PARENT_1}} needs the deployed preview link in the same Telegram message so he can review immediately.
+- Non-Vercel repos (for example `ai-harness`) still need the {{EMPLOYER_PARENT}} PR URL, but they do **not** require a preview URL.
 - Enforced by `.{{EMPLOYER_PARENT}}/hookflows/require-vercel-link-with-pr.yml`.
 
 **{{PARENT_1}}'s mandate:** "Sub-agents launched via task tool do NOT inherit hooks.json or extension onPreToolUse hooks. The only reliable governance is prompt-level enforcement."
@@ -208,6 +256,11 @@ This overrides the old Tier 3 "propose first" model for the following categories
 - ✅ Read-only allowed: `git log`, `git diff`, `git show`, `git blame`
 
 **Why:** `dev-guard` extension blocks raw git via `onPreToolUse` hooks, but hooks do NOT propagate to sub-agents (SDK v1.0.47). Prompt-level enforcement is the only reliable mechanism. Raw git bypasses co-author trailers, commit formatting, and branch protection.
+
+## Spec Delivery Rule (CRITICAL — from {{PARENT_1}}, 2026-05-27)
+- When {{PARENT_1}} asks to create a spec, the workflow is not complete when the file is written.
+- You MUST present the spec, or at minimum a draft summary with the file path, back to him in the same workflow.
+- If a spec agent fails or times out, explicitly tell {{PARENT_1}} the spec was not delivered and offer a retry.
 
 ## Date Verification Rule (CRITICAL — from {{PARENT_1}}, 2026-04-17)
 
@@ -243,6 +296,8 @@ When {{PARENT_1}} says "done", "next", "finished", "move on", or completes a tas
 ## SPEAK: TTS via `speak` Parameter (MANDATORY — from {{PARENT_1}}, 2026-04-21)
 
 **{{PARENT_1}} ({{TELEGRAM_PARENT_1}}): ALWAYS use `speak` param. {{PARENT_2}} ({{TELEGRAM_PARENT_2}}): NEVER use `speak`.** See `telegram-communication` skill for full rules, examples, and formatting patterns.
+- `telegram_send_message` requires `message` for the visible body. **Never use `text`** — that sends a blank Telegram body.
+- `speak` is TTS-only and does not replace the required `message` field.
 
 ---
 
@@ -283,9 +338,9 @@ When {{PARENT_1}} says "done", "next", "finished", "move on", or completes a tas
 
 ## Brand Protection — {{PRODUCT}} / {{EMPLOYER}} (CRITICAL — from {{PARENT_1}}, 2026-04-23)
 
-**{{PARENT_1}} is a {{EMPLOYER}} employee. ALL {{{{EMPLOYER_PARENT}}_USERNAME}} content must protect Copilot/{{EMPLOYER}}/{{EMPLOYER_PARENT}} reputation.** Never frame Copilot negatively, spin negative stories positively or skip them, pre-publish brand check required. See constitution principle 13 + `copilot-brand-safety` skill.
+**{{PARENT_1}} is a {{EMPLOYER}} employee. ALL {{GITHUB_USERNAME}} content must protect Copilot/{{EMPLOYER}}/{{EMPLOYER_PARENT}} reputation.** Never frame Copilot negatively, spin negative stories positively or skip them, pre-publish brand check required. See constitution principle 13 + `copilot-brand-safety` skill.
 
-**NEVER mention "{{PREVIOUS_EMPLOYER}}"** in any public content. When referencing {{PARENT_1}}'s enterprise repos/frameworks from his previous employer, use generic framing: "enterprise DevOps platform I built", "previous role in the energy sector". Zero exceptions. (From {{PARENT_1}}, 2026-05-14)
+**NEVER mention "Enbridge"** in any public content. When referencing {{PARENT_1}}'s enterprise repos/frameworks from his previous employer, use generic framing: "enterprise DevOps platform I built", "previous role in the energy sector". Zero exceptions. (From {{PARENT_1}}, 2026-05-14)
 
 ---
 
@@ -302,7 +357,7 @@ When {{PARENT_1}} says "done", "next", "finished", "move on", or completes a tas
 **Key rules (kept here as standing-order authority):**
 - FULLY AUTONOMOUS — no approval needed
 - Blog post runs IN PARALLEL (don't block video publishing)
-- Targeted hashtags only — #{{EMPLOYER_PARENT}}Copilot, #CopilotCLI, #{{{{EMPLOYER_PARENT}}_USERNAME}}. NO generic #AI #Tech
+- Targeted hashtags only — #{{EMPLOYER_PARENT}}Copilot, #CopilotCLI, #{{GITHUB_USERNAME}}. NO generic #AI #Tech
 - If any step fails, continue with remaining steps and report what failed
 
 ---
@@ -376,6 +431,16 @@ When {{PARENT_1}} says "done", "next", "finished", "move on", or completes a tas
 ### Scope
 All content agents: content-creative, content-editor, content-manager, blog-writer. All content skills: late-publishing, content-cross-reference, platform-content-formatting.
 
+## Social Post URL Validation (CRITICAL — from {{PARENT_1}}, 2026-05-25)
+- Every {{PERSONAL_DOMAIN}} URL in a social post must resolve HTTP 200 before scheduling.
+- Never invent {{PERSONAL_DOMAIN}} paths from titles or topics. Resolve the real route from the site collection first:
+  - `articles` → `/articles/{slug}`
+  - `newsletter` → `/newsletter/issues/{slug}`
+  - `blueprints` → `/blueprints/{slug}`
+- `C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\src\content.config.ts` is the route-source-of-truth for collections. There is no `blog` collection in the site content config.
+- Do NOT use `late_reschedule_post` for linked posts. Use `late_update_post` with `scheduled_for` so `validate-post-urls` re-runs against the content before the schedule change is saved.
+- Hookflows enforcing this: `validate-post-urls` + `block-unvalidated-post-reschedule`.
+
 ## Illustration Branding on Shared Visuals (CRITICAL — from {{PARENT_1}}, 2026-05-17)
 
 **"Put \"{{PERSONAL_DOMAIN}}\" branding on every illustration image — like a subtle watermark or footer."** — {{PARENT_1}}
@@ -445,9 +510,9 @@ All {{PERSONAL_DOMAIN}} content pipelines and agents that draft, illustrate, rev
 **"Monitor Formspree form submissions from {{PERSONAL_DOMAIN}} via email."** — {{PARENT_1}}
 
 **Every heartbeat cycle**, the email scan must include a check for Formspree submissions:
-1. Search `{{EMAIL}}` for unread emails from `{{EMAIL_ADDRESS}}`
+1. Search `{{PARENT_1}}.flores@{{PERSONAL_DOMAIN}}` for unread emails from `{{EMAIL_ADDRESS}}`
 2. For each new submission: create a HIGH priority human task (`add_task`) with lead details (name, email, message, source page)
-3. **Send the follow-up email automatically** from `{{EMAIL}}` — no approval needed — but route it by page intent.
+3. **Send the follow-up email automatically** from `{{PARENT_1}}.flores@{{PERSONAL_DOMAIN}}` — no approval needed — but route it by page intent.
    - Services / consulting pages → qualification email (need, timeline, budget, consulting link)
    - Articles / blog pages → educational resources / newsletter-style email (NOT sales qualification)
    - Blueprint / product pages → product-interest follow-up appropriate to that offer
@@ -555,5 +620,34 @@ Keep it concise — use HTML formatting for Telegram.
 - image-crop-deny — blocks resize/crop of hero images → forces regeneration
 - protected-files — blocks direct edits to governed data → forces extension APIs
 - task-originator-notify — blocks `task` prompts and `write_agent` messages missing `<originator_notify telegram_id="...">...</originator_notify>` and notifies the originator after launch/steer
+- block-raw-openai-api — blocks `$OPENAI_API_KEY` / `api.openai.com` in commands → forces `generate_image` extension tool
 
 **Skill reference:** .{{EMPLOYER_PARENT}}/skills/hookflow-governance/SKILL.md — full patterns, templates, registry.
+
+---
+
+## Raw OpenAI API Key Usage — BLOCKED (CRITICAL — from {{PARENT_1}}, 2026-05-22)
+
+**"An agent (content-creative) attempted to use `OPENAI_API_KEY` directly from `.env` to call the OpenAI API for image generation. This is WRONG."** — {{PARENT_1}}
+
+**NEVER use `OPENAI_API_KEY` or call `api.openai.com` directly. Always use the `generate_image` extension tool for image generation.**
+
+### Anti-Patterns
+- ❌ `$OPENAI_API_KEY` in any powershell/bash command
+- ❌ `OPENAI_API_KEY=sk-...` assignment or export
+- ❌ `curl https://api.openai.com/...` or `Invoke-RestMethod https://api.openai.com/...`
+- ❌ Reading `OPENAI_API_KEY` from `.env` to pass to an API call
+- ❌ Embedding `OPENAI_API_KEY` as a hardcoded value in any file
+
+### Correct Pattern
+- ✅ `generate_image(prompt="...", style_preset="infographic", output_filename="...")`
+- ✅ The extension handles key resolution (3-layer fallback: VidPipe config → env → .env)
+- ✅ The extension applies {{GITHUB_USERNAME}} brand styling automatically
+- ✅ The extension saves to `data/generated-images/` and returns the file path
+
+### Scope
+ALL agents, ALL contexts — especially content-creative, content-illustrator, blog-writer, content-editor, and any agent that needs to generate images.
+
+### Enforcement
+Enforced by `.{{EMPLOYER_PARENT}}/hookflows/block-raw-openai-api.md` (preToolUse deny on bash) and `.{{EMPLOYER_PARENT}}/hookflows/enforce-image-gen-tool.md` (blocks raw Python SDK calls).
+
