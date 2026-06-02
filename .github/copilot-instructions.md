@@ -41,6 +41,7 @@ Never repeat the same mistake. Every correction makes you permanently better.
 - `validate-email-urls` (YAML) — blocks `gmail_send` if any URL in body returns non-200 → prevents broken-link emails
 - `validate-post-urls` (YAML) — blocks `late_create_post`/`late_update_post` if any {{PERSONAL_DOMAIN}} URL returns non-200
 - `block-unvalidated-post-reschedule` (YAML) — blocks `late_reschedule_post` → forces `late_update_post` so linked posts get fresh URL validation before schedule changes
+- `pitcher-proof-required` (YAML) — blocks `telegram_send_message` to {{PARENT_2}} mentioning a pitcher unless a `📊 Pitcher Proof:` block with 7 required fields is present; enforces `pitcher-method` skill
 - `auto-reload-extensions` (MD) — advisory after extension file edits → requires `extensions_reload`
 
 ## Multi-User Rules
@@ -329,7 +330,7 @@ For sub-agents and delegated tasks, the family constitution at `data/constitutio
 - **NEVER use raw `gh pr create`, `gh pr merge`, or `gh pr checkout`** in powershell.
 - **ALWAYS use dev-workflow extension tools:** `dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, `dev_pull`, `dev_stash`, `dev_reset`, `dev_rebase`, `dev_merge_pr`, `dev_pr_checkout`, `dev_status`, `start_dev_branch`, `create_vercel_pr`.
 - **Read-only git commands ARE allowed:** `git log`, `git diff`, `git show`, `git blame`, `git --no-pager log`.
-- **This applies to ALL agents** — including sub-agents launched via `task` tool. Sub-agents do NOT inherit hooks.json or onPreToolUse hooks from the parent session (SDK v1.0.47 limitation). The dev-guard extension cannot enforce this in sub-agents. Prompt-level enforcement is the ONLY reliable mechanism.
+- **This applies to ALL agents** — including sub-agents launched via `task` tool. Dev-workflow tools ensure co-author trailers, commit formatting, and branch protection are consistently applied.
 - **Reason:** Raw git commands bypass the dev-guard hook, skip co-author trailers, skip commit message formatting, and can push to protected branches without review.
 
 ### {{FAMILY_NAME}}-family Is Direct-to-Main (NEVER Branch Here)
@@ -368,7 +369,7 @@ For sub-agents and delegated tasks, the family constitution at `data/constitutio
 - Priority: Perplexity → Exa → {{EMPLOYER_PARENT}} MCP tools → MS Learn → `web_search` (last resort)
 - See `research-tools` skill for full hierarchy and decision flowchart
 - ⚠️ **MCP tools (Perplexity, Exa) are ONLY available in the main session — NOT in sub-agents launched via `task` tool.** Sub-agents: use `web_fetch` as fallback. Do NOT waste turns searching for MCP tools with `tool_search_tool_regex`.
-- ⚠️ **Sub-agents MUST NEVER use `tool_search_tool_regex`** for standard platform tools. ALL tools are documented in agent definitions — call them directly by name. Searching wastes tokens and burns ~3 turns per search cycle. The `tool-fishing-guard` extension blocks these in the main session, but sub-agents are unprotected (SDK limitation). Standard tools: `telegram_send_message`, `list_tasks`, `add_task`, `complete_task`, `update_task`, `dev_add`, `dev_commit`, `dev_push`, `dev_status`, `generate_image`, `late_*`, `store_memory`, `gcal_*`, `gmail_*`.
+- ⚠️ **Sub-agents MUST NEVER use `tool_search_tool_regex`** for standard platform tools. ALL tools are documented in agent definitions — call them directly by name. Searching wastes tokens and burns ~3 turns per search cycle. The `tool-fishing-guard` extension blocks these across all sessions. Standard tools: `telegram_send_message`, `list_tasks`, `add_task`, `complete_task`, `update_task`, `dev_add`, `dev_commit`, `dev_push`, `dev_status`, `generate_image`, `late_*`, `store_memory`, `gcal_*`, `gmail_*`.
 
 ## Agent Mesh — Cross-Session Communication
 

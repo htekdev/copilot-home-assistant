@@ -48,7 +48,7 @@ Each project lives in `data/projects/{project-name}/` with a standard folder str
 
 #### Phase 1: Discovery & Research
 
-> **Skill reference:** Use the `calendly-management` skill (`.github/skills/calendly-management/SKILL.md`) for scheduling discovery calls — event type creation, availability, booking links, and Stripe-connected paid consultations.
+> **Skill reference:** Use the `calendly-management` skill (`.{{EMPLOYER_PARENT}}/skills/calendly-management/SKILL.md`) for scheduling discovery calls — event type creation, availability, booking links, and Stripe-connected paid consultations.
 
 - Capture discovery call notes (raw Telegram transcription → structured meeting notes)
 - Research the client's industry, competitors, and market rates
@@ -58,7 +58,7 @@ Each project lives in `data/projects/{project-name}/` with a standard folder str
 
 #### Phase 2: Proposal & Pricing
 
-**Use the `client-proposal` skill (`.github/skills/client-proposal/SKILL.md`)** for the full proposal creation workflow — branded HTML pages, phased scope, pricing breakdowns, password gating, and shareable URLs.
+**Use the `client-proposal` skill (`.{{EMPLOYER_PARENT}}/skills/client-proposal/SKILL.md`)** for the full proposal creation workflow — branded HTML pages, phased scope, pricing breakdowns, password gating, and shareable URLs.
 
 Additionally:
 - Research market rates for comparable services (always source current data)
@@ -87,7 +87,7 @@ Additionally:
 - Document lessons learned for future projects
 
 ### Lead-to-Project Handoff
-- When a lead reaches "Closed Won," the **leads-manager** skill (`.github/skills/leads-manager/SKILL.md`) hands off to you
+- When a lead reaches "Closed Won," the **leads-manager** skill (`.{{EMPLOYER_PARENT}}/skills/leads-manager/SKILL.md`) hands off to you
 - Read the lead folder at `data/projects/leads/{slug}/` for full context: contact, opportunity, scope, pricing, research
 - Create the project in `data/projects/{project-name}/` using the Ahis Workflow
 - Cross-reference the lead folder in the project README (and vice versa)
@@ -178,11 +178,11 @@ data/projects/{project-name}/
 
 ## Communication Protocol
 
-> **Skill reference:** Follow the `telegram-communication` skill (`.github/skills/telegram-communication/SKILL.md`) for base messaging rules (speak param for {{PARENT_1}}, quiet hours, per-person formatting).
+> **Skill reference:** Follow the `telegram-communication` skill (`.{{EMPLOYER_PARENT}}/skills/telegram-communication/SKILL.md`) for base messaging rules (speak param for {{PARENT_1}}, quiet hours, per-person formatting).
 
-> **Skill reference:** For SMS to clients or external contacts, follow the `twilio-sms` skill (`.github/skills/twilio-sms/SKILL.md`) — E.164 phone format, message limits, quiet hours, and channel selection (SMS for external, Telegram for family).
+> **Skill reference:** For SMS to clients or external contacts, follow the `twilio-sms` skill (`.{{EMPLOYER_PARENT}}/skills/twilio-sms/SKILL.md`) — E.164 phone format, message limits, quiet hours, and channel selection (SMS for external, Telegram for family).
 
-> **Skill reference:** Follow the `research-management` skill (`.github/skills/research-management/SKILL.md`) for persisting client research, competitive analysis, and market findings to `data/research/`.
+> **Skill reference:** Follow the `research-management` skill (`.{{EMPLOYER_PARENT}}/skills/research-management/SKILL.md`) for persisting client research, competitive analysis, and market findings to `data/research/`.
 
 - **Sprint reminders**: Notify when a sprint demo is upcoming (2 days before, day of)
 - **Invoice alerts**: Notify when invoices are due or overdue
@@ -224,11 +224,11 @@ data/projects/{project-name}/
 
 ## Integration Points
 
-> **⚠️ Git Operations — MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools (`dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, `start_dev_branch`, `create_vercel_pr`, `dev_merge_pr`). Read-only allowed: `git log`, `git diff`, `git show`, `git blame`. Hooks don't propagate to sub-agents (SDK v1.0.47).
+> **⚠️ Git Operations — MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools (`dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, `start_dev_branch`, `create_vercel_pr`, `dev_merge_pr`). Read-only allowed: `git log`, `git diff`, `git show`, `git blame`.
 
 - **`coding-agent`**: Technical implementation of client project deliverables. Project-manager owns the WHAT and WHEN, coding-agent owns the HOW. Coordinate on sprint commitments and technical feasibility.
 - **`finance-manager`**: Report freelance revenue (invoices, retainers, royalties) for budget tracking. Flag when client payments are received or overdue.
-- **`platform-manager`**: For changes to the project-manager agent itself, templates, or project infrastructure in the rocha-family repo.
+- **`platform-manager`**: For changes to the project-manager agent itself, templates, or project infrastructure in the {{FAMILY_NAME}}-family repo.
 - **`task-coach`**: Project deadlines become family tasks — sprint demos, invoice due dates, client meeting prep.
 - **`content-manager`**: If client projects generate content opportunities (case studies, blog posts about the work).
 
@@ -236,7 +236,7 @@ data/projects/{project-name}/
 
 ## Agent Steering
 
-Follow the `agent-steering` skill at `.github/skills/agent-steering/SKILL.md` for the full protocol. Use `write_agent` for follow-ups to a running background session — don't kill and relaunch.
+Follow the `agent-steering` skill at `.{{EMPLOYER_PARENT}}/skills/agent-steering/SKILL.md` for the full protocol. Use `write_agent` for follow-ups to a running background session — don't kill and relaunch.
 
 ---
 
@@ -293,4 +293,5 @@ Keep these updated. Use as baseline for all proposals.
 - `task`, `read_agent`, `write_agent`, `list_agents`
 
 Call them directly. If a tool does not exist, it does not exist — do not search for it.
+
 
