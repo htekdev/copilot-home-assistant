@@ -41,11 +41,11 @@ You are **efficient**. You use multiple AI models to get diverse perspectives, b
 
 **Tier 1: Foundational documents (highest priority)**
 - `data/constitution.md` — The supreme law. Everything must align with this.
-- `.github/copilot-instructions.md` — Global Copilot instructions.
+- `.{{EMPLOYER_PARENT}}/copilot-instructions.md` — Global Copilot instructions.
 - `data/standing-orders.md` — Standing orders that supplement the constitution.
 
 **Tier 2: Agent definitions (high priority)**
-- `.github/agents/*.agent.md` — All agent definition files.
+- `.{{EMPLOYER_PARENT}}/agents/*.agent.md` — All agent definition files.
 - These define agent identity, domain ownership, rules, and behavior.
 
 **Tier 3: Agent memory (medium priority)**
@@ -70,7 +70,7 @@ Cross-document conflicts where one file says X and another says NOT-X.
 
 **Method**: Extract all explicit rules/policies from each file. Cross-reference for conflicts. Pay special attention to: time boundaries, communication rules, domain ownership boundaries, escalation policies, and naming conventions.
 
-> **Skill reference:** Use the `data-domain-ownership` skill (`.github/skills/data-domain-ownership/SKILL.md`) as the canonical ownership map when auditing domain boundary violations — it defines which agent owns which `data/` folder and the cross-domain write rules.
+> **Skill reference:** Use the `data-domain-ownership` skill (`.{{EMPLOYER_PARENT}}/skills/data-domain-ownership/SKILL.md`) as the canonical ownership map when auditing domain boundary violations — it defines which agent owns which `data/` folder and the cross-domain write rules.
 
 #### 2. Stale Information (High)
 Content that's outdated or references things that no longer exist.
@@ -192,7 +192,7 @@ Synthesize all three analyses into a single prioritized findings list.
 
 ### Create Task (Needs Approval)
 
-**For governance on what to auto-fix vs escalate**, follow the `autonomous-improvement` skill (`.github/skills/autonomous-improvement/SKILL.md`).
+**For governance on what to auto-fix vs escalate**, follow the `autonomous-improvement` skill (`.{{EMPLOYER_PARENT}}/skills/autonomous-improvement/SKILL.md`).
 
 - Contradictions between constitution and agent rules (which is correct?)
 - Proposed skill extractions (new skill file needed)
@@ -211,7 +211,7 @@ Synthesize all three analyses into a single prioritized findings list.
 
 ## Communication Protocol
 
-> **Skill reference:** Follow the `telegram-communication` skill (`.github/skills/telegram-communication/SKILL.md`) for base messaging rules (speak param for {{PARENT_1}}, quiet hours, per-person formatting).
+> **Skill reference:** Follow the `telegram-communication` skill (`.{{EMPLOYER_PARENT}}/skills/telegram-communication/SKILL.md`) for base messaging rules (speak param for {{PARENT_1}}, quiet hours, per-person formatting).
 
 - **Weekly report**: Always send after full audit, even if platform is clean
 - **Daily quick scan**: Only message if critical contradictions found
@@ -262,22 +262,22 @@ Synthesize all three analyses into a single prioritized findings list.
 
 > **⚠️ MANDATORY:** NEVER use raw git commands in powershell. ALWAYS use dev-workflow extension tools.
 
-Follow the `repo-workflow` skill at `.github/skills/repo-workflow/SKILL.md` for the full git workflow (Fast Mode for tiny edits, Proper Mode for larger work).
+Follow the `repo-workflow` skill at `.{{EMPLOYER_PARENT}}/skills/repo-workflow/SKILL.md` for the full git workflow (Fast Mode for tiny edits, Proper Mode for larger work).
 
 When auto-fixes are applied:
 1. Stage all modified files via `dev_add`
 2. Commit with message via `dev_commit`: `fix(context): auto-fix from context audit — [summary]`
 3. Push via `dev_push`
-4. Co-author: `Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>`
+4. Co-author: `Co-authored-by: Copilot <{{EMAIL_ADDRESS}}.{{EMPLOYER_PARENT}}.com>`
 
-**NEVER use:** `git add`, `git commit`, `git push`, `gh hookflow git-push`. Hooks don't propagate to sub-agents (SDK v1.0.47).
+**NEVER use:** `git add`, `git commit`, `git push`, `gh hookflow git-push`..
 **Read-only allowed:** `git log`, `git diff`, `git show`, `git blame`
 
 ---
 
 ## Agent Steering
 
-Follow the `agent-steering` skill at `.github/skills/agent-steering/SKILL.md` for the full protocol. Use `write_agent` for follow-ups to a running background session — don't kill and relaunch.
+Follow the `agent-steering` skill at `.{{EMPLOYER_PARENT}}/skills/agent-steering/SKILL.md` for the full protocol. Use `write_agent` for follow-ups to a running background session — don't kill and relaunch.
 
 ## Output Quality Standards
 
@@ -299,4 +299,5 @@ Follow the `agent-steering` skill at `.github/skills/agent-steering/SKILL.md` fo
 - `task`, `read_agent`, `write_agent`, `list_agents`
 
 Call them directly. If a tool does not exist, it does not exist — do not search for it.
+
 

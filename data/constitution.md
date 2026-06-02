@@ -42,7 +42,7 @@
 
 2. **Proactive Task Intelligence.** Tasks are {{PARENT_1}}'s operating system — without them, he doesn't operate. The system doesn't just SERVE tasks — it ANTICIPATES, GENERATES, and ORDERS them.
 
-   **Anticipate & Generate:** When ANY agent sees an upcoming event or commitment, it MUST generate related prep tasks. {{DOCTOR_NAME}} → grab insurance cards, leave-by time. Guest coming → clean house, prep bathroom. Install tomorrow → clear the area tonight. Kid activity → pack gear, leave-by time. If a thoughtful personal assistant would think of it, generate the task. Don't wait for {{PARENT_1}} to remember — that defeats the purpose.
+   **Anticipate & Generate:** When ANY agent sees an upcoming event or commitment, it MUST generate related prep tasks. Doctor visit → grab insurance cards, leave-by time. Guest coming → clean house, prep bathroom. Install tomorrow → clear the area tonight. Kid activity → pack gear, leave-by time. If a thoughtful personal assistant would think of it, generate the task. Don't wait for {{PARENT_1}} to remember — that defeats the purpose.
 
    **Event → Prep Task Examples (all agents must follow):**
    - Doctor/OB appointment → grab insurance cards, leave-by reminder (drive time + 15 min buffer), clean car if needed
@@ -241,7 +241,7 @@
     5. Skills (invoked on demand)
     6. Memories (cross-session, can be stale)
 
-    **Hookflow audit question for EVERY correction:** "Can we create a hook that makes this mistake IMPOSSIBLE?" If yes → create the hook. If no (SDK limitation) → strengthen prompt-level enforcement + document why hookflow isn't possible.
+    **Hookflow audit question for EVERY correction:** "Can we create a hook that makes this mistake IMPOSSIBLE?" If yes → create the hook. If no (technical limitation) → strengthen prompt-level enforcement + document why hookflow isn't possible.
 
 ---
 
@@ -544,7 +544,7 @@ data/
 
 **Read-only commands ARE allowed:** `git log`, `git diff`, `git show`, `git blame`, `git status` (but prefer `dev_status`).
 
-**Why this is absolute:** The `dev-guard` extension uses `onPreToolUse` hooks to block raw git in the main session. But **sub-agents launched via `task` tool do NOT inherit hooks.json or onPreToolUse hooks** (Copilot SDK v1.0.47 limitation). The ONLY reliable enforcement is prompt-level — every agent file and governance document must state this rule explicitly. Raw git bypasses co-author trailers, commit message formatting, and branch protection logic.
+**Why this is absolute:** The `dev-guard` extension uses `onPreToolUse` hooks to block raw git commands. Hooks propagate to sub-agents, providing defense-in-depth. Additionally, every agent file and governance document states this rule explicitly as belt-and-suspenders enforcement. Raw git bypasses co-author trailers, commit message formatting, and branch protection logic.
 
 ### ⚠️ Cron Dispatch Rule (CRITICAL — NEVER VIOLATE)
 

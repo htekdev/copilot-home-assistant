@@ -38,6 +38,21 @@ Profiles with full details are in `data/family/`
 - **Family Time restrictions were removed by {{PARENT_1}}.** Do not block, queue, or suppress messages to {{PARENT_1}} during the old 5:00 PM – 8:30 PM CT window.
 - **Quiet Hours still apply:** 10 PM – 6 AM CT for non-urgent notifications.
 
+## Pitcher Proof Block Required for {{PARENT_2}} (CRITICAL — from {{PARENT_1}}, 2026-06-01)
+- **{{PARENT_1}}'s correction:** "If you mention pitcher to {{PARENT_2}}, it must include some known section on pitcher status on the bottom or something. The proof from your pitcher tools. There has to be some type of syntax that you have to put in there."
+- **Rule:** Any `telegram_send_message` to {{PARENT_2}} (`{{TELEGRAM_PARENT_2}}`) that mentions `pitcher` MUST include the structured `📊 Pitcher Proof:` block.
+- **Required syntax:**
+  - `📊 Pitcher Proof:`
+  - `• Pitcher age: Day X`
+  - `• Current volume: XXX mL`
+  - `• Feeds available: X.X`
+  - `• Feeds until spoil: X`
+  - `• Headroom: XX mL` **or** `• Freeze excess: XX mL`
+  - `• Verdict: SAFE TO ADD / FREEZE EXCESS / START NEW PITCHER`
+- **Correct pattern:** run `pitcher_check`, `pitcher_add_decision`, or `pitcher_status`, then paste the returned proof block into the message body. Prefer attaching the `pitcher_status` graph too.
+- **Anti-pattern:** "The pitcher should be fine" or any other reassurance without the proof block.
+- **Enforcement:** `.{{EMPLOYER_PARENT}}/hookflows/pitcher-proof-required.yml` blocks non-compliant messages before they are sent.
+
 ## Agent Dispatch — Task Tool Only (CRITICAL — from {{PARENT_1}}, 2026-05-22)
 
 - **ALWAYS use the `task` tool directly** for launching agents. With `mode: "background"` for non-blocking dispatch.
@@ -255,7 +270,7 @@ This overrides the old Tier 3 "propose first" model for the following categories
 - ✅ ALWAYS: `dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, `dev_pull`, `dev_stash`, `dev_reset`, `dev_rebase`, `dev_merge_pr`, `dev_status`, `start_dev_branch`, `create_vercel_pr`
 - ✅ Read-only allowed: `git log`, `git diff`, `git show`, `git blame`
 
-**Why:** `dev-guard` extension blocks raw git via `onPreToolUse` hooks, but hooks do NOT propagate to sub-agents (SDK v1.0.47). Prompt-level enforcement is the only reliable mechanism. Raw git bypasses co-author trailers, commit formatting, and branch protection.
+**Why:** `dev-guard` extension blocks raw git via `onPreToolUse` hooks (enforced in all sessions including sub-agents). Raw git bypasses co-author trailers, commit formatting, and branch protection.
 
 ## Spec Delivery Rule (CRITICAL — from {{PARENT_1}}, 2026-05-27)
 - When {{PARENT_1}} asks to create a spec, the workflow is not complete when the file is written.
@@ -357,7 +372,7 @@ When {{PARENT_1}} says "done", "next", "finished", "move on", or completes a tas
 **Key rules (kept here as standing-order authority):**
 - FULLY AUTONOMOUS — no approval needed
 - Blog post runs IN PARALLEL (don't block video publishing)
-- Targeted hashtags only — #{{EMPLOYER_PARENT}}Copilot, #CopilotCLI, #{{GITHUB_USERNAME}}. NO generic #AI #Tech
+- Targeted hashtags only — #GitHubCopilot, #CopilotCLI, #{{GITHUB_USERNAME}}. NO generic #AI #Tech
 - If any step fails, continue with remaining steps and report what failed
 
 ---
