@@ -37,12 +37,18 @@ Never repeat the same mistake. Every correction makes you permanently better.
 - `enforce-image-gen-tool` (MD) — blocks raw Python image generation → forces `generate_image` extension tool
 - `block-raw-openai-api` (MD) — blocks `$OPENAI_API_KEY` / `api.openai.com` in commands → forces `generate_image` extension tool
 - `calendar-date-guard` (ext) — blocks `gcal_create_event` when weekday mismatches prompt intent or is ambiguous
-- `block-git-write` / `block-git-bypass` / `block-gh-pr-checkout` / `block-hookflow-gitwt` (MD) — defense-in-depth for raw git/gh commands alongside dev-guard
+- `block-git-write` / `block-git-bypass` / `block-gh-pr-checkout` / `block-hookflow-gitwt` / `block-gh-pr-write` (MD) — defense-in-depth for raw git/gh commands alongside dev-guard
 - `validate-email-urls` (YAML) — blocks `gmail_send` if any URL in body returns non-200 → prevents broken-link emails
 - `validate-post-urls` (YAML) — blocks `late_create_post`/`late_update_post` if any {{PERSONAL_DOMAIN}} URL returns non-200
 - `block-unvalidated-post-reschedule` (YAML) — blocks `late_reschedule_post` → forces `late_update_post` so linked posts get fresh URL validation before schedule changes
 - `pitcher-proof-required` (YAML) — blocks `telegram_send_message` to {{PARENT_2}} mentioning a pitcher unless a `📊 Pitcher Proof:` block with 7 required fields is present; enforces `pitcher-method` skill
 - `auto-reload-extensions` (MD) — advisory after extension file edits → requires `extensions_reload`
+- `telegram-message-param-guard` (YAML) — blocks `telegram_send_message` missing `message` param or using `text` instead of `message` → prevents blank Telegram messages
+- `block-manage-schedule` (MD) — blocks `manage_schedule` tool → forces all scheduling through `cron.json`; in-session timers are unreliable and conflict with cron architecture
+- `block-gh-copilot-command` (MD) — blocks `gh copilot` as a command in content writes → correct standalone CLI command is just `copilot`
+- `block-direct-blog-issues` (YAML) — blocks raw `gh issue create/edit/close` on `{{GITHUB_USERNAME}}/htek-dev-site` blog pipeline → forces `blog_*` extension tools
+- `block-merge-conflict-commit` (YAML) — blocks `dev_commit` when staged files contain unresolved merge conflict markers — prevents committing conflicted code
+- `warn-blog-interview-delivery` (MD) — advisory after `blog_set_interviewing` → requires agent to send {{PARENT_1}} direct Telegram with full interview question set (task alone not sufficient)
 
 ## Multi-User Rules
 - **Identify who's talking** from the Telegram user ID prefix in each message
@@ -292,11 +298,12 @@ For sub-agents and delegated tasks, the family constitution at `data/constitutio
 ### Task System
 - **Task-First**: Every actionable finding → `add_task`. Tasks are {{PARENT_1}}'s PRIMARY interface. Telegram = alerts/summaries. Tasks = action items. Always create the task FIRST.
 - **Complete Before Confirming**: `complete_task` MUST be called BEFORE any Telegram response. See `quick-task-transition` skill.
-- **Tool Names**: The task tool is `complete_task` — NOT `task_complete`. The update tool is `update_task` — NOT `task_update`. Wrong names crash agents instantly.
+- **Tool Names**: The correct task completion tool is `complete_task` (NOT the non-existent "task underscore complete"). The correct update tool is `update_task` (NOT "task underscore update"). Wrong names crash agents instantly.
 - **Quick Task Serve**: "done"/"next" transitions handled directly by main session — no agent spin-up (60-90s is unacceptable). See `quick-task-transition` skill. Task-coach still launches fresh for cron nudges, complex requests, and {{PARENT_2}}.
 - **Proactive Intelligence**: Anticipate → Generate → Order → Serve. Auto-generate prep tasks from calendar events. See `proactive-task-intelligence` skill.
 - **Task Originator Notify**: Every `task` tool prompt and `write_agent` message MUST include exactly one `<originator_notify telegram_id="...">...</originator_notify>` block so hookflow can parse who to notify and what to send after delegation/steering.
 - **No Duplicate Starting Notifications**: Agents MUST NOT send their own "starting work" or "I'm working on X" Telegram message at launch. The `task-originator-notify` hookflow automatically sends the originator_notify content to the user via Telegram. If the agent ALSO sends a starting message, the user gets duplicates. Agents should ONLY send Telegram for **final results/deliverables** — never for "I'm starting." (Learned 2026-05-19, from {{PARENT_1}} seeing double messages)
+- **Blog Interview Belt + Suspenders**: When `blog-planner` moves an {{PERSONAL_DOMAIN}} article issue into `blog-interviewing`, it must create the human task **and** send {{PARENT_1}} a direct Telegram with the interview title + question set right away. Do NOT rely on task-coach alone to surface these tasks — large queues can bury them. {{PARENT_1}} must be able to answer either in Telegram or via the task. (Learned 2026-07-08, from {{PARENT_1}}: "You are creating the task for me, but the tasks are not bubbling up to me")
 
 ### Finance & Social
 - **Finance Auto-Pay**: Bills on auto-pay → cancel reminder tasks. Keep non-bill finance tasks. See `finance-task-lifecycle` skill.
