@@ -15,6 +15,8 @@ This skill enables any agent to create, update, and query entrepreneurship leads
 
 ## Critical Rules — Read These First
 
+0. **Budget before scope — always.** Before creating any estimate, proposal, or scope document for a lead, budget constraints MUST be documented in `opportunity.md → Budget Constraints`. This is a hard gate. No exceptions. Lesson: Surgikweep (June 2026) — 2 days building a $59K proposal before discovering their IT budget was ~$5K/year. The correct order is: **Discovery → Budget Qualification → Scope to Budget → Proposal.**
+
 1. **One folder per lead.** Every lead lives at `data/projects/leads/{slug}/`. The slug is lowercase-hyphenated: brand name if available (e.g., `blackout-pickleball`), person name otherwise (e.g., `edward-yurcisin`).
 
 2. **One file per data type.** Contact info → `contact.md`. Meeting notes → `meeting-notes.md`. Comms → `comms-log.md`. NEVER mix data types in one file.
@@ -88,14 +90,14 @@ When ANY agent receives information about a new potential client:
    - scope.md (if scope was discussed)
    - pricing.md (if pricing was discussed)
 5. Update _index.md with new pipeline row
-6. If the lead came from {{PERSONAL_DOMAIN}} Formspree/email capture, send the follow-up email automatically from `{{EMAIL}}` (no approval needed), but route it by page intent:
+6. If the lead came from {{PERSONAL_DOMAIN}} Formspree/email capture, send the follow-up email automatically from `{{PARENT_1}}.flores@{{PERSONAL_DOMAIN}}` (no approval needed), but route it by page intent:
    - services/consulting → qualification email
    - articles/blog → educational resources / newsletter-style
    - blueprint/product → offer-specific follow-up
 7. Create follow-up task via add_task:
    - title: "Follow up with {name} — {context}"
    - category: "finance" (entrepreneurship revenue)
-   - assignee: "hector"
+   - assignee: "{{PARENT_1}}"
    - due_date: appropriate follow-up date
 8. If the automatic email was sent, log it in `comms-log.md` and set the lead's next action to wait for reply / follow up in 48 hours if silent
 ```
@@ -141,7 +143,7 @@ When a stage transition occurs:
    - due_date: 3 business days from now
    - category: "finance"
    - priority: "high"
-   - assignee: "hector"
+   - assignee: "{{PARENT_1}}"
    - notes: "Proposal was sent on {date}. Follow up if no response."
 ```
 
@@ -177,8 +179,9 @@ After a discovery call, scope call, or any meeting:
 1. Create or append to meeting-notes.md
 2. Include: date, topic, attendees, duration, channel
 3. Capture: raw notes, key decisions, action items, quotes/signals
-4. Update timeline.md with meeting entry
-5. Create tasks for each action item via add_task
+4. **Extract budget signals immediately** — any mention of current IT spend, payment comfort, vendor costs, or budget constraints goes into `opportunity.md → Budget Constraints`. If budget was NOT discussed, create a task: "Discover budget constraints for {lead} before scoping"
+5. Update timeline.md with meeting entry
+6. Create tasks for each action item via add_task
 ```
 
 ### 7. Task Creation Rules
@@ -187,7 +190,7 @@ Task creation must respect the lead's current pipeline stage.
 
 - **Initial Contact** → only create tasks for: reply, research, schedule intro call
 - **Warm Lead** → only create tasks for: schedule discovery call, send intro materials
-- **Active/Scoping** → only create tasks for: scope call prep, scope documentation, pricing research
+- **Active/Scoping** → only create tasks for: scope call prep, scope documentation, pricing research. **REQUIRED FIRST: verify budget constraints are in `opportunity.md`. If missing, create a task to discover budget BEFORE any scope/pricing tasks.**
 - **Proposal Sent** → only create tasks for: follow-up on proposal, negotiate
 - **Negotiating** → only create tasks for: contract review, close terms
 

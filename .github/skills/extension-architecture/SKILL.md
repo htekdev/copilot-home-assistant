@@ -18,32 +18,49 @@ Every extension lives in `.github/extensions/{name}/extension.mjs`:
 ```
 .github/extensions/
 ├── action-tracker/extension.mjs      # Task/shopping/meal/maintenance tools
+├── agent-governance/extension.mjs    # Sub-agent skill-loading + completion quality enforcement (hook only)
 ├── ask-via-telegram/extension.mjs    # Routes ask_user → Telegram
 ├── audit-log/extension.mjs           # Logging/audit trail
-├── auto-commit/extension.mjs         # Git auto-save on file changes
+├── auto-commit/extension.mjs         # Git auto-save on file changes (hook only)
+├── blog-pipeline/extension.mjs       # Governed blog issue lifecycle tools (blog_*)
 ├── budget-tracker/extension.mjs      # Plaid financial connector tools
+├── calendar-date-guard/extension.mjs # Blocks calendar events with wrong day-of-week (hook only)
 ├── cron-scheduler/extension.mjs      # Cron job scheduler (reads cron.json)
+├── dev-guard/extension.mjs           # Blocks raw git/hookflow in powershell (hook only)
 ├── dev-workflow/extension.mjs        # Multi-repo dev with git worktrees
 ├── exa/extension.mjs                 # Exa AI search & crawl tools
+├── exit-plan-guard/extension.mjs     # Blocks exit_plan_mode in autopilot sessions (hook only)
 ├── family-data/extension.mjs         # Family profiles, preferences
 ├── financial-connector/extension.mjs # Plaid API integration
 ├── google-maps/extension.mjs         # Drive time, directions, routes
 ├── google-services/extension.mjs     # Gmail, GCal, GTasks tools
+├── higgsfield/extension.mjs          # Higgsfield AI CLI — video gen, avatars, webproducts
 ├── home-maintenance/extension.mjs    # Maintenance schedule tools
+├── image-crop-deny/extension.mjs     # Blocks hero image resize/crop operations (hook only)
 ├── image-gen/extension.mjs           # OpenAI gpt-image-2 image generation
 ├── late-api/extension.mjs            # Late/Zernio social media API
 ├── life-events/extension.mjs         # Family milestone tracking
+├── linkedin-brand-safety/extension.mjs # Blocks LinkedIn messages with non-Copilot AI claims (hook only)
 ├── locations/extension.mjs           # Saved places management
 ├── meal-planner/extension.mjs        # Meals, recipes, grocery lists
+├── nicu-tracker/extension.mjs        # NICU pump/milk/baby tracking tools
 ├── perplexity/extension.mjs          # Perplexity AI research tools
+├── pitcher-tools/extension.mjs       # Breast milk pitcher-method math tools
+├── playwright-bridge/extension.mjs   # Persistent Playwright browser sessions
+├── promo-video/extension.mjs         # Higgsfield Marketing Studio promo video generation
+├── protected-files/extension.mjs     # Protected file registry + hookflow rule regeneration
+├── safe-content-write/extension.mjs  # Detects large PowerShell writes → redirects to create/edit (hook only)
 ├── self-restart/extension.mjs        # Session restart tool
+├── session-commands/extension.mjs    # Session token/cost metrics tools
 ├── shopping-list/extension.mjs       # Shopping list CRUD
 ├── tasker-bridge/extension.mjs       # Tasker TTS integration
 ├── telegram-bridge/extension.mjs     # Telegram messaging bridge
+├── tool-fishing-guard/extension.mjs  # Blocks tool_search_tool_regex for known tools (hook only)
 ├── twilio-sms/extension.mjs          # Twilio SMS messaging
 ├── vercel-env/extension.mjs          # Vercel project & env management
 ├── video-analyzer/extension.mjs      # Gemini video analysis tool
 ├── video-bridge/extension.mjs        # Video recording upload bridge
+├── video-ideas/extension.mjs         # Video ideas database tools
 ```
 
 ## Core Pattern — `joinSession`
@@ -256,7 +273,7 @@ The `auto-commit` extension automatically commits and pushes changes:
 - **Polling fallback:** Every 5 minutes, catches sub-agent changes
 - **Commit message:** `Auto-save: {tool-name} (YYYY-MM-DD)`
 - **Push command:** Uses `dev_push` tool internally (raw git/hookflow blocked by `dev-guard`)
-- **Co-author:** Always includes `Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>`
+- **Co-author:** Always includes `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
 
 **Implications for agents:**
 - No need to manually `git add/commit/push` for data changes
@@ -291,34 +308,50 @@ The `auto-commit` extension automatically commits and pushes changes:
 | Extension | Primary Purpose | Key Tools |
 |-----------|----------------|-----------|
 | `action-tracker` | Task CRUD, templates, dependencies | add_task, complete_task, list_tasks, expand_template |
+| `agent-governance` | Sub-agent skill-loading + completion quality enforcement | (hook only — onSubagentStart/Stop) |
 | `ask-via-telegram` | Routes ask_user to Telegram | (hook only — no tools) |
 | `audit-log` | Activity logging | (hook only) |
 | `auto-commit` | Git auto-save | (hook only — no tools) |
+| `blog-pipeline` | Governed blog issue lifecycle | blog_create_issue, blog_update_issue, blog_transition_stage, blog_list_issues, blog_get_issue |
 | `budget-tracker` | Plaid financial data | get_balances, get_transactions, get_spending_summary |
+| `calendar-date-guard` | Blocks calendar events with wrong day-of-week | (hook only — onPreToolUse deny) |
 | `cron-scheduler` | Scheduled job dispatch | cron_list_jobs, cron_next_run |
 | `dev-guard` | Blocks raw git/hookflow in powershell | (hook only — onPreToolUse interceptor) |
 | `dev-workflow` | ALL git operations as tools | start_dev_branch, create_vercel_pr, dev_status, dev_add, dev_commit, dev_push, dev_pull, dev_checkout, dev_stash, dev_reset, dev_rebase, dev_merge_pr |
 | `exa` | Exa AI search & crawl (sub-agent propagation) | exa_search, exa_search_advanced, exa_crawl, exa_code_context, exa_company_research, exa_people_search, exa_find_similar |
+| `exit-plan-guard` | Blocks exit_plan_mode in autopilot sessions | (hook only — onPreToolUse deny) |
 | `family-data` | Family profiles | get_family_member, list_family, get_preferences |
 | `financial-connector` | Plaid sync | sync_accounts, get_recurring |
 | `google-maps` | Navigation | get_drive_time, get_directions, plan_route |
 | `google-services` | Gmail/GCal/GTasks | gmail_search, gcal_today, gcal_create_event |
+| `higgsfield` | Higgsfield AI CLI — video gen, avatars, webproducts | higgsfield_generate, higgsfield_list_avatars, higgsfield_webproduct_fetch, higgsfield_auth_login |
 | `home-maintenance` | Maintenance scheduling | maintenance_due, log_maintenance, add_service_provider |
+| `image-crop-deny` | Blocks hero image resize/crop in powershell | (hook only — onPreToolUse deny) |
 | `image-gen` | OpenAI gpt-image-2 infographics | generate_image |
 | `late-api` | Social media scheduling | late_create_post, late_list_posts, late_presign_upload |
 | `life-events` | Family milestone tracking | add_life_event, list_life_events, get_life_event, update_life_event |
+| `linkedin-brand-safety` | Blocks outbound LinkedIn messages with non-Copilot AI claims | (hook only — onPreToolUse deny) |
 | `locations` | Saved places | find_location, add_location |
 | `meal-planner` | Meals & recipes | set_meal, get_meal_plan, add_recipe |
+| `nicu-tracker` | NICU pump, milk, and baby tracking | log_pump, log_feed, get_pump_summary, get_feed_summary, nicu_daily_report |
 | `perplexity` | Perplexity AI research (sub-agent propagation) | perplexity_search, perplexity_reason, perplexity_deep_research |
+| `pitcher-tools` | Breast milk pitcher-method math | pitcher_calculate, pitcher_graph, pitcher_status |
+| `playwright-bridge` | Persistent Playwright browser sessions | playwright_navigate, playwright_click, playwright_type, playwright_screenshot, playwright_session_start, playwright_session_close |
+| `promo-video` | Higgsfield Marketing Studio promo video for {{PERSONAL_DOMAIN}} articles | generate_promo_video |
+| `protected-files` | Protected file registry + hookflow rule regeneration | protect_file, unprotect_file, list_protected_files |
+| `safe-content-write` | Redirects large PowerShell here-string writes to create/edit | (hook only — onPreToolUse advisory) |
 | `self-restart` | Session restart | restart_session |
+| `session-commands` | Session token/cost metrics | session_compact, session_usage, session_cost_analysis |
 | `shopping-list` | Shopping CRUD | add_to_shopping_list, shopping_list, check_off_item |
 | `tasker-bridge` | Android Tasker TTS | tasker_status, tasker_start_tunnel |
 | `task-originator-notify` | Enforces `<originator_notify>` metadata on `task` prompts, `write_agent` messages, and originator notifications | (hook only — delegation/steering validator + notifier) |
 | `telegram-bridge` | Telegram messaging | telegram_send_message, telegram_send_photo |
+| `tool-fishing-guard` | Blocks tool_search_tool_regex for well-known tools | (hook only — onPreToolUse deny) |
 | `twilio-sms` | Twilio SMS messaging | send_sms |
 | `vercel-env` | Vercel project & env management | vercel_list_projects, vercel_list_env_vars, vercel_set_env_var, vercel_list_deployments, vercel_get_runtime_logs |
 | `video-analyzer` | Gemini video AI | analyze_video |
 | `video-bridge` | Video recording upload | video_bridge_status, video_bridge_start |
+| `video-ideas` | Video ideas database | add_video_idea, list_video_ideas, update_video_idea, get_video_idea |
 
 ## Anti-Patterns
 
@@ -330,12 +363,8 @@ The `auto-commit` extension automatically commits and pushes changes:
 - ❌ Creating tools with generic names ("do_thing") — be specific
 - ❌ Modifying extension.mjs and expecting hot-reload (requires restart)
 
-## ⚠️ CRITICAL LIMITATION: Hooks Do NOT Propagate to Sub-Agents
+## Hook Propagation to Sub-Agents
 
-**Sub-agents launched via the `task` tool do NOT inherit `hooks.json` or `onPreToolUse`/`onPostToolUse` hooks from the parent session.** This is a known limitation in Copilot SDK v1.0.47.
+**Hooks DO propagate to sub-agents launched via the `task` tool.** Extensions using `onPreToolUse`/`onPostToolUse` hooks (like `dev-guard`) enforce governance consistently across both the main session and sub-agent sessions.
 
-**Impact:** The `dev-guard` extension blocks raw git commands (`git commit`, `git push`, etc.) via `onPreToolUse` hooks. This protection ONLY works in the main session. Sub-agents can freely run raw git commands without being intercepted.
-
-**Mitigation:** Prompt-level enforcement. Every agent file (`.github/agents/*.agent.md`), the constitution (`data/constitution.md`), standing orders (`data/standing-orders.md`), and copilot-instructions (`.github/copilot-instructions.md`) all contain explicit rules requiring dev-workflow tools (`dev_add`, `dev_commit`, `dev_push`, `dev_checkout`, etc.) instead of raw git commands. This is the ONLY reliable enforcement mechanism until the SDK supports hook propagation.
-
-**When building new extensions that enforce governance via hooks:** Document this limitation prominently. Hooks-based governance is a defense-in-depth layer, not the primary enforcement. Prompt-level rules in agent definitions are primary.
+**Defense-in-depth:** Prompt-level enforcement in agent definitions (`.github/agents/*.agent.md`), the constitution, standing orders, and copilot-instructions all reinforce governance rules as a redundant layer alongside hook enforcement. This belt-and-suspenders approach ensures governance even if an extension fails to load.

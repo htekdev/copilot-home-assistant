@@ -1,5 +1,5 @@
 /**
- * Dev Workflow Extension for {{PRODUCT}} CLI
+ * Dev Workflow Extension for GitHub Copilot CLI
  *
  * Provides tools for ALL git operations — agents should NEVER use raw git commands.
  * The dev-guard extension blocks raw git in powershell and directs agents here.
@@ -16,7 +16,7 @@
  *   - dev_stash          — Stash or pop working changes
  *   - dev_reset          — Reset staged changes or undo commits
  *   - dev_rebase         — Rebase current branch onto another
- *   - dev_merge_pr       — Merge a {{EMPLOYER_PARENT}} PR (squash by default, delete branch)
+ *   - dev_merge_pr       — Merge a GitHub PR (squash by default, delete branch)
  *
  * Zero external dependencies — uses only node:* built-ins + @github/copilot-sdk.
  */
@@ -32,7 +32,7 @@ const REPOS_ROOT = "C:\\Repos\\{{GITHUB_USERNAME}}";
  * Repos where agents ARE allowed to commit/push directly to main/master.
  * All other repos enforce the branch+PR workflow.
  */
-const DIRECT_MAIN_REPOS = new Set(["{{FAMILY_NAME}}-family"]);
+const DIRECT_MAIN_REPOS = new Set(["{{FAMILY_NAME}}-family", "pi-{{FAMILY_NAME}}-family", "agent-mesh-service"]);
 
 /**
  * Error message returned when an agent tries to commit/push to main/master
@@ -138,8 +138,8 @@ function isMainBranchBlocked(folder) {
 
 /**
  * Extract the short repo name from a folder path or git remote.
- * e.g. "C:\Repos\{{GITHUB_USERNAME}}\{{PERSONAL_DOMAIN}}-site\workdir\feat--foo" → "{{PERSONAL_DOMAIN}}-site"
- *      or from git remote origin → "{{PERSONAL_DOMAIN}}-site"
+ * e.g. "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\workdir\feat--foo" → "htek-dev-site"
+ *      or from git remote origin → "htek-dev-site"
  */
 function detectRepoName(folder) {
   // Try git remote first (most reliable)
@@ -154,8 +154,8 @@ function detectRepoName(folder) {
     const normalized = folder.replace(/\\/g, "/");
     const root = REPOS_ROOT.replace(/\\/g, "/");
     if (normalized.startsWith(root)) {
-      // e.g. "C:/Repos/{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site/workdir/feat--foo" → "{{PERSONAL_DOMAIN}}-site"
-      const relative = normalized.slice(root.length + 1); // "{{PERSONAL_DOMAIN}}-site/workdir/..."
+      // e.g. "C:/Repos/{{GITHUB_USERNAME}}/htek-dev-site/workdir/feat--foo" → "htek-dev-site"
+      const relative = normalized.slice(root.length + 1); // "htek-dev-site/workdir/..."
       const topDir = relative.split("/")[0];
       if (topDir) return topDir;
     }
@@ -359,7 +359,7 @@ async function handleCreateVercelPr(args) {
       const pushResult = tryRun(
         `git push -u origin ${branch}`,
         folder,
-        60_000
+        180_000
       );
       if (!pushResult.ok) {
         return JSON.stringify({
@@ -434,6 +434,10 @@ async function handleCreateVercelPr(args) {
     if (vercelResult.status === "failed") {
       return JSON.stringify({
         status: "failed",
+        action_required: "fix_build_error_before_notifying",
+        notify_user: false,
+        ready_to_notify: false,
+        next_step: "Fix the build error in error_summary, push the fix, and wait for a successful Vercel rebuild before sending any PR or preview update to {{PARENT_1}}.",
         pr_number: prNumber,
         pr_url: prUrl,
         branch,
@@ -443,7 +447,7 @@ async function handleCreateVercelPr(args) {
         error_summary: vercelResult.error_summary,
         deployment_details: vercelResult.deploymentDetails,
         vercel_comment: vercelResult.commentBody,
-        note: "⚠️ Vercel deployment FAILED. Check the error_summary and inspector_url for build logs. Fix the build error and push again — Vercel will auto-rebuild.",
+        note: "⚠️ Vercel deployment FAILED. DO NOT notify user yet. Fix the build error shown in error_summary, push the fix, and wait for Vercel to rebuild successfully before sending any preview URL.",
       });
     }
 
@@ -563,7 +567,7 @@ async function handleDevCommit(args) {
     }
 
     // Commit with co-author trailer
-    const commitCmd = `git commit -m ${shellEscape(message)} --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>"`;
+    const commitCmd = `git commit -m ${shellEscape(message)} --trailer "Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>"`;
     const result = run(commitCmd, folder, 15_000);
 
     return JSON.stringify({
@@ -580,13 +584,13 @@ async function handleDevCommit(args) {
  * Known Vercel-connected repos — auto-detect for preview URL polling.
  */
 const VERCEL_REPOS = new Set([
-  "{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site",
+  "{{GITHUB_USERNAME}}/htek-dev-site",
   "{{GITHUB_USERNAME}}/blackout-pickleball",
   "{{GITHUB_USERNAME}}/carplay-mobile-detail",
 ]);
 
 /**
- * Detect the {{EMPLOYER_PARENT}} owner/repo from git remote origin URL.
+ * Detect the GitHub owner/repo from git remote origin URL.
  * Handles both HTTPS and SSH formats.
  */
 function detectRepo(folder) {
@@ -595,7 +599,7 @@ function detectRepo(folder) {
     // HTTPS: https://github.com/owner/repo.git
     const httpsMatch = remote.match(/github\.com\/([^/]+\/[^/.]+)/);
     if (httpsMatch) return httpsMatch[1];
-    // SSH: {{EMAIL_ADDRESS}}:owner/repo.git
+    // SSH: git@github.com:owner/repo.git
     const sshMatch = remote.match(/github\.com:([^/]+\/[^/.]+)/);
     if (sshMatch) return sshMatch[1];
   } catch { /* ignore */ }
@@ -717,7 +721,7 @@ function parseVercelComment(commentBody) {
 }
 
 /**
- * Fetch deployment error details from {{EMPLOYER_PARENT}} deployment status API.
+ * Fetch deployment error details from GitHub deployment status API.
  * Returns { state, description, logUrl } or null.
  */
 function fetchDeploymentError(repo, prNumber, folder) {
@@ -853,7 +857,7 @@ async function handleDevPush(args) {
     if (set_upstream) pushCmd = `git push -u origin ${branch}`;
     if (force) pushCmd += " --force-with-lease";
 
-    const result = tryRun(pushCmd, folder, 60_000);
+    const result = tryRun(pushCmd, folder, 180_000);
 
     if (!result.ok) {
       return JSON.stringify({
@@ -891,11 +895,16 @@ async function handleDevPush(args) {
             pr_url: pr.url,
             vercel_preview_url: null,
             vercel_status: "failed",
+            action_required: "fix_build_error_before_notifying",
+            notify_user: false,
+            ready_to_notify: false,
+            next_step:
+              "Fix the build error in error_summary, push the fix, and wait for a successful Vercel rebuild before sending any PR or preview update to {{PARENT_1}}.",
             inspector_url: vercelPollResult.inspectorUrl,
             error_summary: vercelPollResult.error_summary,
             deployment_details: vercelPollResult.deploymentDetails,
             vercel_note:
-              "⚠️ Vercel deployment FAILED. Check the error_summary and inspector_url for build logs. Fix the build error and push again — Vercel will auto-rebuild.",
+              "⚠️ Vercel deployment FAILED. DO NOT notify user yet. Fix the build error shown in error_summary, push the fix, and wait for Vercel to rebuild successfully before sending any preview URL.",
           };
         } else if (vercelPollResult.status === "success" && vercelPollResult.previewUrl) {
           vercelResult = {
@@ -1177,7 +1186,7 @@ async function handleDevRebase(args) {
 }
 
 /**
- * dev_merge_pr — Merge a {{EMPLOYER_PARENT}} PR via gh CLI.
+ * dev_merge_pr — Merge a GitHub PR via gh CLI.
  */
 async function handleDevMergePr(args) {
   const { repo, pr_number, method, delete_branch } = args;
@@ -1362,7 +1371,7 @@ await joinSession({
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site')",
+              "GitHub repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site')",
           },
           branch: {
             type: "string",
@@ -1380,14 +1389,14 @@ await joinSession({
     {
       name: "dev_pr_checkout",
       description:
-        "Check out a {{EMPLOYER_PARENT}} Pull Request into an isolated git worktree. Fetches the PR branch and creates a worktree so the agent can review/modify the PR code without affecting the main repo clone. Returns the worktree folder path. Use this instead of 'gh pr checkout'.",
+        "Check out a GitHub Pull Request into an isolated git worktree. Fetches the PR branch and creates a worktree so the agent can review/modify the PR code without affecting the main repo clone. Returns the worktree folder path. Use this instead of 'gh pr checkout'.",
       parameters: {
         type: "object",
         properties: {
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site')",
+              "GitHub repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site')",
           },
           pr_number: {
             type: "number",
@@ -1404,14 +1413,14 @@ await joinSession({
     {
       name: "create_vercel_pr",
       description:
-        "Push a branch, create a {{EMPLOYER_PARENT}} PR, and wait for the Vercel preview URL. Polls PR comments for the Vercel bot's deployment status. Returns status='success' with preview URL on successful deployment, or status='failed' with error_summary, inspector_url, and deployment_details when the build fails — so you can fix the issue and push again. Returns 'timeout' if no result within max_wait seconds. Use after making changes in a worktree created by start_dev_branch.",
+        "Push a branch, create a GitHub PR, and wait for the Vercel preview URL. Polls PR comments for the Vercel bot's deployment status. Returns status='success' with preview URL on successful deployment, or status='failed' with action_required='fix_build_error_before_notifying', notify_user=false, error_summary, inspector_url, and deployment_details when the build fails — so you fix it before notifying {{PARENT_1}}. Returns 'timeout' if no result within max_wait seconds. Use after making changes in a worktree created by start_dev_branch.",
       parameters: {
         type: "object",
         properties: {
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site')",
+              "GitHub repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site')",
           },
           branch: {
             type: "string",
@@ -1516,7 +1525,7 @@ await joinSession({
     {
       name: "dev_push",
       description:
-        "Push the current branch to the remote. Sets upstream tracking by default. Auto-detects Vercel-connected repos ({{PERSONAL_DOMAIN}}-site, blackout-pickleball, carplay-mobile-detail) and polls for the Vercel preview URL when an open PR exists. Returns the preview URL so you can send it to {{PARENT_1}} via Telegram. Use instead of 'git push' or 'hookflow git-push'.",
+        "Push the current branch to the remote. Sets upstream tracking by default. Auto-detects Vercel-connected repos (htek-dev-site, blackout-pickleball, carplay-mobile-detail) and polls for the Vercel preview URL when an open PR exists. On success it returns the preview URL to send to {{PARENT_1}}; on Vercel failure it returns action_required='fix_build_error_before_notifying' and notify_user=false so you fix the build before notifying him. Use instead of 'git push' or 'hookflow git-push'.",
       parameters: {
         type: "object",
         properties: {
@@ -1675,13 +1684,13 @@ await joinSession({
     {
       name: "dev_merge_pr",
       description:
-        "Merge a {{EMPLOYER_PARENT}} Pull Request. Uses squash merge by default and deletes the source branch. Use instead of 'gh pr merge' or 'git merge'.",
+        "Merge a GitHub Pull Request. Uses squash merge by default and deletes the source branch. Use instead of 'gh pr merge' or 'git merge'.",
       parameters: {
         type: "object",
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site').",
+            description: "GitHub repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site').",
           },
           pr_number: {
             type: "number",

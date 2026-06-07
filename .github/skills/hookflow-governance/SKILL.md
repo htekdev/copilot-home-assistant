@@ -85,6 +85,17 @@ This is not optional. This is not "nice to have." This is the CORE governance me
 | `validate-email-urls` | preToolUse (YAML hookflow) | Blocks `gmail_send` if any URL in body returns non-200 — prevents sending emails with broken links |
 | `validate-post-urls` | preToolUse (YAML hookflow) | Blocks `late_create_post`/`late_update_post` if any {{PERSONAL_DOMAIN}} URL in content returns non-200 |
 | `block-unvalidated-post-reschedule` | preToolUse (YAML hookflow) | Blocks `late_reschedule_post` → forces `late_update_post` so validate-post-urls re-runs before linked posts are re-scheduled |
+| `pitcher-proof-required` | preToolUse (YAML hookflow) | Blocks `telegram_send_message` to {{PARENT_2}} (chat_id: `{{TELEGRAM_PARENT_2}}`) mentioning a milk pitcher unless a structured `📊 Pitcher Proof:` block (7 required fields from `pitcher_check`/`pitcher_status`) is present |
+| `telegram-message-param-guard` | preToolUse (YAML hookflow) | Blocks `telegram_send_message` missing the `message` param or using `text` instead — ensures visible Telegram body is always set |
+| `block-manage-schedule` | preToolUse (MD hookflow) | Blocks `manage_schedule` tool → forces all scheduling through `cron.json` instead of unreliable in-session timers |
+| `block-gh-copilot-command` | preToolUse (MD hookflow) | Blocks `gh copilot` as a command in content writes → correct standalone command is just `copilot` |
+| `block-unreviewed-blog-article-merge` | preToolUse (YAML hookflow) | Blocks `dev_merge_pr` on `{{GITHUB_USERNAME}}/htek-dev-site` `article/*`, `blog/*`, `fix/illustrations-*` branches unless the PR has a GitHub APPROVED review — enforces blog pipeline: illustrator → blog-reviewer approves → merge (incident 2026-06-05) |
+| `block-direct-blog-issues` | preToolUse (YAML hookflow) | Blocks raw `gh issue create/edit/close` on `{{GITHUB_USERNAME}}/htek-dev-site` blog pipeline → forces `blog_*` extension tools |
+| `block-merge-conflict-commit` | preToolUse (YAML hookflow) | Blocks `dev_commit` when staged files contain unresolved merge conflict markers (`<<<<<<<`, `=======`, `>>>>>>>`) |
+| `warn-blog-interview-delivery` | postToolUse (MD hookflow) | Advisory after `blog_set_interviewing` — requires agent to send {{PARENT_1}} a direct Telegram with full interview question set (task alone is insufficient) |
+| `validate-blackout-event-dates` | postToolUse (YAML hookflow) | Advisory after `dev_commit`/`dev_push` on blackout-pickleball — if event files changed, injects mandatory checklist: day-of-week verification, stale date grep, UTC offset warning, single-source-of-truth reminder, UTF-8 encoding check |
+| `block-direct-code-create-on-main` | preToolUse (YAML hookflow) | Blocks `create` of code files (.js/.mjs/.ts/.py/.go etc.) on the main/master branch of non-{{FAMILY_NAME}}-family repos → forces `start_dev_branch` + PR workflow. Closes the escape hatch agents used to bypass `safe-content-write` by writing .mjs files directly via `create`. |
+| `block-proposal-generate-image` | preToolUse (YAML hookflow) | Blocks `generate_image` when prompt/params mention ANY client name (blackout, surgiquip, carplay, chapulin, detail-ops, etc.) or "proposal" → forces `generate_image_with_image` with approved wireframe/screenshot as reference. Triggered by Surgiquip + Blackout incidents (2026-06-05). Supersedes `block-blackout-generate-image`. |
 
 ---
 
@@ -156,7 +167,7 @@ steps:
 
 ```javascript
 /**
- * {Name} Extension for {{PRODUCT}} CLI
+ * {Name} Extension for GitHub Copilot CLI
  *
  * {What it blocks/enforces and why}
  *
@@ -240,7 +251,7 @@ When reviewing platform behavior (nightly reflection, context audit, skill optim
 2. **Was an instruction ignored?** → Can we enforce it deterministically via hookflow?
 3. **Is there a "NEVER do X" rule?** → Does a hookflow enforce it? If not, CREATE ONE.
 4. **Is there a "ALWAYS do Y" rule?** → Can a postToolUse check for absence and advise?
-5. **Are sub-agents violating rules?** → Hooks in the main session catch sub-agent tool calls too (SDK limitation: they don't propagate to sub-agent sessions, but the parent session's hooks fire for tool calls made in that session).
+5. **Are sub-agents violating rules?** → Hooks propagate to sub-agents, providing consistent enforcement across all sessions.
 
 ---
 
@@ -250,8 +261,8 @@ When reviewing platform behavior (nightly reflection, context audit, skill optim
 - Extension-based `onPreToolUse` deny hooks are unreliable for some cross-extension tool paths. Do not assume an extension can block tools registered by another extension.
 - YAML hookflows in `.github/hookflows/` are the preferred place for deterministic request-validation deny rules.
 - Extension `onPostToolUse` remains useful for advisory context and side effects.
-- Hooks do NOT propagate to sub-agents launched via `task` tool — sub-agents run in separate sessions without parent extensions.
-- Workaround: prompt-level enforcement for sub-agents + hookflow-js for the main session.
+- Hooks propagate to sub-agents launched via `task` tool — governance enforcement is consistent across all sessions.
+- Belt-and-suspenders: prompt-level enforcement in agent definitions provides additional redundancy alongside hookflow enforcement.
 
 ---
 

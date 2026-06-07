@@ -96,13 +96,53 @@ For most of {{PARENT_1}}'s clients (friends, referrals, small businesses), the l
 
 ---
 
-## Pre-Proposal Workflow — Clarification Questions (MANDATORY)
+## Pre-Proposal Workflow — Budget Discovery + Clarification Questions (MANDATORY)
 
-**CRITICAL: Do NOT jump straight to building a proposal after a scope call.** Before creating any proposal page, the agent MUST ask {{PARENT_1}} clarification questions to fill knowledge gaps. This prevents incomplete proposals that miss costs, dependencies, or client requirements.
+**CRITICAL: Do NOT jump straight to building a proposal after a scope call.** Before creating any proposal page, the agent MUST complete TWO mandatory gates: Budget Discovery first, then Clarification Questions. This prevents scoping to $59K and discovering the client has a $5K/year IT budget.
+
+> **Lesson learned (Surgikweep, June 2026):** {{PARENT_1}} spent 2 days building a $59K proposal, only to learn on a follow-up call that the client's entire annual IT budget was ~$5K. This caused painful restructuring: $59K → $20K → phased $3K-$7K chunks. The root cause was scoping BEFORE understanding budget constraints. **The correct order is: Discovery → Budget Qualification → Scope to Budget → Proposal.**
+
+---
+
+## Step 0: Budget Discovery (MANDATORY — runs BEFORE clarification questions)
+
+**STOP. Do not write a single line of proposal code until budget constraints are documented.**
+
+After any discovery/scope call, if budget has NOT been explicitly stated, ask {{PARENT_1}} these questions first:
+
+### Budget Discovery Questions (send as one Telegram message)
+
+```
+💰 Before I scope this out, need to nail down their budget first — learned this the hard way:
+
+1. What's their current IT/tech budget (annual or monthly)?
+2. What's a comfortable monthly investment for them?
+3. Who approves purchases over $X? (owner, board, finance team?)
+4. Have they budgeted specifically for this project?
+5. Any signals from the call — did they mention price sensitivity, past vendor costs, or a number range?
+
+This shapes the whole proposal. Takes 30 seconds but saves days of rework.
+```
+
+### What to Do With the Answer
+
+| Budget Signal | Action |
+|--------------|--------|
+| Explicit number stated | Document in `opportunity.md` → `Budget Constraints` → proceed |
+| "Tight budget" / "small business" | Probe: ask for a range. Never assume. |
+| "We have budget" / "Not a concern" | Still document the range — "not a concern" ≠ any number |
+| {{PARENT_1}} says "just build it" | Flag assumption clearly in lead folder, build to phased $3K-$5K entry option first |
+| No answer available yet | **Do not build proposal.** Create task to follow up on budget before scoping. |
+
+### Where to Document Budget
+
+Write confirmed budget data to `data/projects/leads/{slug}/opportunity.md` under **Budget Constraints** before proceeding. This is the gate — if that section is empty, scoping hasn't started.
+
+---
 
 ### When to Ask Clarification Questions
 
-After capturing scope call notes but BEFORE generating any proposal code:
+After Budget Discovery is complete and documented, THEN ask clarification questions about scope details:
 
 ### Required Clarification Categories
 
@@ -164,10 +204,16 @@ Reply when ready and I'll build it.
 ## Full Pipeline — The Correct Order (MANDATORY)
 
 ```
-Scope Call → Clarification Questions → Technical Spec → Multi-Model Review → Proposal Generation
+Discovery Call → Budget Discovery (Step 0) → Clarification Questions → Technical Spec → Multi-Model Review → Proposal Generation
 ```
 
-### Step 0: Technical Spec (BEFORE any proposal code)
+> **Anti-Pattern:** Discovery Call → Scope → Build $59K Proposal → Find out budget is $5K → Restructure for 2 days. This happened with Surgikweep (June 2026). Never again.
+
+### Step 0: Budget Discovery (BEFORE EVERYTHING — see above)
+
+Ask budget questions, document constraints in `opportunity.md`. Do not proceed until this is done.
+
+### Step 0.5: Technical Spec (BEFORE any proposal code)
 
 After clarification questions are answered, create a **Technical Spec** at `data/specs/{client-slug}-v1.md` that covers:
 - Problem statement & goals
@@ -202,6 +248,10 @@ Without the spec review, these would have been embarrassing corrections after th
 ---
 
 ## Technical Process — Creating a New Proposal
+
+### Step 0: Budget Discovery (see Pre-Proposal Workflow above — MANDATORY FIRST GATE)
+
+Ask {{PARENT_1}} the budget discovery questions. Document in `opportunity.md → Budget Constraints`. No scoping or proposals until this section is populated.
 
 ### Step 1: Clarification Questions (see Pre-Proposal Workflow above)
 
@@ -446,7 +496,7 @@ When a proposal is created:
    - Title: "Follow up with {client} on proposal"
    - Due: 2-3 business days after sending
    - Category: "errand"
-   - Assignee: "hector"
+   - Assignee: "{{PARENT_1}}"
 
 ---
 
