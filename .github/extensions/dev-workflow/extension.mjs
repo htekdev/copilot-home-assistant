@@ -18,21 +18,21 @@
  *   - dev_rebase         — Rebase current branch onto another
  *   - dev_merge_pr       — Merge a {{EMPLOYER_PARENT}} PR (squash by default, delete branch)
  *
- * Zero external dependencies — uses only node:* built-ins + @github/copilot-sdk.
+ * Zero external dependencies — uses only node:* built-ins + @{{EMPLOYER_PARENT}}/copilot-sdk.
  */
 import { execSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve, basename } from "node:path";
-import { joinSession } from "@github/copilot-sdk/extension";
+import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
 
 // ── Constants ───────────────────────────────────────────────────────────────
-const REPOS_ROOT = "C:\\Repos\\{{GITHUB_USERNAME}}";
+const REPOS_ROOT = "C:\\Repos\\{{{{EMPLOYER_PARENT}}_USERNAME}}";
 
 /**
  * Repos where agents ARE allowed to commit/push directly to main/master.
  * All other repos enforce the branch+PR workflow.
  */
-const DIRECT_MAIN_REPOS = new Set(["{{FAMILY_NAME}}-family"]);
+const DIRECT_MAIN_REPOS = new Set(["{{FAMILY_NAME}}-family", "pi-{{FAMILY_NAME}}-family", "agent-mesh-service"]);
 
 /**
  * Error message returned when an agent tries to commit/push to main/master
@@ -42,7 +42,7 @@ const MAIN_BRANCH_BLOCKED_MSG = [
   "🚫 BLOCKED: Direct commits/pushes to main/master are not allowed in this repo.",
   "",
   "Agents MUST use the branch + PR workflow:",
-  "  1. Use `start_dev_branch` to create an isolated worktree (e.g. start_dev_branch repo='{{GITHUB_USERNAME}}/my-repo' branch='feat/my-feature')",
+  "  1. Use `start_dev_branch` to create an isolated worktree (e.g. start_dev_branch repo='{{{{EMPLOYER_PARENT}}_USERNAME}}/my-repo' branch='feat/my-feature')",
   "  2. Make your changes in that worktree folder",
   "  3. Use `dev_add` + `dev_commit` + `dev_push` from the worktree",
   "  4. Use `create_vercel_pr` (for Vercel repos) or create a PR via `dev_push` + gh CLI",
@@ -138,14 +138,14 @@ function isMainBranchBlocked(folder) {
 
 /**
  * Extract the short repo name from a folder path or git remote.
- * e.g. "C:\Repos\{{GITHUB_USERNAME}}\{{PERSONAL_DOMAIN}}-site\workdir\feat--foo" → "{{PERSONAL_DOMAIN}}-site"
- *      or from git remote origin → "{{PERSONAL_DOMAIN}}-site"
+ * e.g. "C:\Repos\{{{{EMPLOYER_PARENT}}_USERNAME}}\htek-dev-site\workdir\feat--foo" → "htek-dev-site"
+ *      or from git remote origin → "htek-dev-site"
  */
 function detectRepoName(folder) {
   // Try git remote first (most reliable)
   try {
     const remote = run("git remote get-url origin", folder, 5_000);
-    const match = remote.match(/github\.com[/:]([^/]+)\/([^/.]+)/);
+    const match = remote.match(/{{EMPLOYER_PARENT}}\.com[/:]([^/]+)\/([^/.]+)/);
     if (match) return match[2]; // repo name without owner
   } catch { /* fall through */ }
 
@@ -154,8 +154,8 @@ function detectRepoName(folder) {
     const normalized = folder.replace(/\\/g, "/");
     const root = REPOS_ROOT.replace(/\\/g, "/");
     if (normalized.startsWith(root)) {
-      // e.g. "C:/Repos/{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site/workdir/feat--foo" → "{{PERSONAL_DOMAIN}}-site"
-      const relative = normalized.slice(root.length + 1); // "{{PERSONAL_DOMAIN}}-site/workdir/..."
+      // e.g. "C:/Repos/{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site/workdir/feat--foo" → "htek-dev-site"
+      const relative = normalized.slice(root.length + 1); // "htek-dev-site/workdir/..."
       const topDir = relative.split("/")[0];
       if (topDir) return topDir;
     }
@@ -359,7 +359,7 @@ async function handleCreateVercelPr(args) {
       const pushResult = tryRun(
         `git push -u origin ${branch}`,
         folder,
-        60_000
+        180_000
       );
       if (!pushResult.ok) {
         return JSON.stringify({
@@ -434,6 +434,10 @@ async function handleCreateVercelPr(args) {
     if (vercelResult.status === "failed") {
       return JSON.stringify({
         status: "failed",
+        action_required: "fix_build_error_before_notifying",
+        notify_user: false,
+        ready_to_notify: false,
+        next_step: "Fix the build error in error_summary, push the fix, and wait for a successful Vercel rebuild before sending any PR or preview update to {{PARENT_1}}.",
         pr_number: prNumber,
         pr_url: prUrl,
         branch,
@@ -443,7 +447,7 @@ async function handleCreateVercelPr(args) {
         error_summary: vercelResult.error_summary,
         deployment_details: vercelResult.deploymentDetails,
         vercel_comment: vercelResult.commentBody,
-        note: "⚠️ Vercel deployment FAILED. Check the error_summary and inspector_url for build logs. Fix the build error and push again — Vercel will auto-rebuild.",
+        note: "⚠️ Vercel deployment FAILED. DO NOT notify user yet. Fix the build error shown in error_summary, push the fix, and wait for Vercel to rebuild successfully before sending any preview URL.",
       });
     }
 
@@ -563,7 +567,7 @@ async function handleDevCommit(args) {
     }
 
     // Commit with co-author trailer
-    const commitCmd = `git commit -m ${shellEscape(message)} --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}>"`;
+    const commitCmd = `git commit -m ${shellEscape(message)} --trailer "Co-authored-by: Copilot <223556219+Copilot@users.noreply.{{EMPLOYER_PARENT}}.com>"`;
     const result = run(commitCmd, folder, 15_000);
 
     return JSON.stringify({
@@ -580,9 +584,9 @@ async function handleDevCommit(args) {
  * Known Vercel-connected repos — auto-detect for preview URL polling.
  */
 const VERCEL_REPOS = new Set([
-  "{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site",
-  "{{GITHUB_USERNAME}}/blackout-pickleball",
-  "{{GITHUB_USERNAME}}/carplay-mobile-detail",
+  "{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site",
+  "{{{{EMPLOYER_PARENT}}_USERNAME}}/blackout-pickleball",
+  "{{{{EMPLOYER_PARENT}}_USERNAME}}/carplay-mobile-detail",
 ]);
 
 /**
@@ -592,11 +596,11 @@ const VERCEL_REPOS = new Set([
 function detectRepo(folder) {
   try {
     const remote = run("git remote get-url origin", folder, 5_000);
-    // HTTPS: https://github.com/owner/repo.git
-    const httpsMatch = remote.match(/github\.com\/([^/]+\/[^/.]+)/);
+    // HTTPS: https://{{EMPLOYER_PARENT}}.com/owner/repo.git
+    const httpsMatch = remote.match(/{{EMPLOYER_PARENT}}\.com\/([^/]+\/[^/.]+)/);
     if (httpsMatch) return httpsMatch[1];
-    // SSH: {{EMAIL_ADDRESS}}:owner/repo.git
-    const sshMatch = remote.match(/github\.com:([^/]+\/[^/.]+)/);
+    // SSH: git@{{EMPLOYER_PARENT}}.com:owner/repo.git
+    const sshMatch = remote.match(/{{EMPLOYER_PARENT}}\.com:([^/]+\/[^/.]+)/);
     if (sshMatch) return sshMatch[1];
   } catch { /* ignore */ }
   return null;
@@ -853,7 +857,7 @@ async function handleDevPush(args) {
     if (set_upstream) pushCmd = `git push -u origin ${branch}`;
     if (force) pushCmd += " --force-with-lease";
 
-    const result = tryRun(pushCmd, folder, 60_000);
+    const result = tryRun(pushCmd, folder, 180_000);
 
     if (!result.ok) {
       return JSON.stringify({
@@ -891,11 +895,16 @@ async function handleDevPush(args) {
             pr_url: pr.url,
             vercel_preview_url: null,
             vercel_status: "failed",
+            action_required: "fix_build_error_before_notifying",
+            notify_user: false,
+            ready_to_notify: false,
+            next_step:
+              "Fix the build error in error_summary, push the fix, and wait for a successful Vercel rebuild before sending any PR or preview update to {{PARENT_1}}.",
             inspector_url: vercelPollResult.inspectorUrl,
             error_summary: vercelPollResult.error_summary,
             deployment_details: vercelPollResult.deploymentDetails,
             vercel_note:
-              "⚠️ Vercel deployment FAILED. Check the error_summary and inspector_url for build logs. Fix the build error and push again — Vercel will auto-rebuild.",
+              "⚠️ Vercel deployment FAILED. DO NOT notify user yet. Fix the build error shown in error_summary, push the fix, and wait for Vercel to rebuild successfully before sending any preview URL.",
           };
         } else if (vercelPollResult.status === "success" && vercelPollResult.previewUrl) {
           vercelResult = {
@@ -1141,6 +1150,7 @@ async function handleDevRebase(args) {
   const folder = args.folder || process.cwd();
   const onto = args.onto || "main";
   const abort = args.abort || false;
+  const continueRebase = args.continue || false;
 
   try {
     if (abort) {
@@ -1152,6 +1162,28 @@ async function handleDevRebase(args) {
       });
     }
 
+    if (continueRebase) {
+      // GIT_EDITOR=true skips the commit message editor (uses current message as-is)
+      const result = tryRun("git -c core.editor=true rebase --continue", folder, 60_000);
+      if (!result.ok) {
+        // Check if there are still conflicts
+        const conflicts = tryRun("git diff --name-only --diff-filter=U", folder, 5_000);
+        return JSON.stringify({
+          status: result.ok ? "success" : "error",
+          action: "continue",
+          folder,
+          output: result.ok ? (result.stdout || "Rebase continued.") : result.stderr,
+          ...(conflicts.ok && conflicts.stdout ? { remaining_conflicts: conflicts.stdout.split("\n").filter(Boolean) } : {}),
+        });
+      }
+      return JSON.stringify({
+        status: "success",
+        action: "continue",
+        folder,
+        output: result.stdout || "Rebase continued successfully.",
+      });
+    }
+
     // Fetch first to ensure we have the latest
     tryRun("git fetch origin", folder, 30_000);
 
@@ -1159,9 +1191,12 @@ async function handleDevRebase(args) {
     const result = tryRun(cmd, folder, 60_000);
 
     if (!result.ok) {
+      // Extract conflicting files from stderr/stdout for actionable feedback
+      const conflicts = tryRun("git diff --name-only --diff-filter=U", folder, 5_000);
       return JSON.stringify({
         error: `Rebase failed: ${result.stderr}`,
-        hint: "Conflicts detected. Resolve manually, then use dev_rebase with abort=true to cancel if needed.",
+        hint: "Conflicts detected. Resolve them, then call dev_rebase with continue=true. Or abort with abort=true.",
+        ...(conflicts.ok && conflicts.stdout ? { conflicting_files: conflicts.stdout.split("\n").filter(Boolean) } : {}),
       });
     }
 
@@ -1362,7 +1397,7 @@ await joinSession({
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site')",
+              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site')",
           },
           branch: {
             type: "string",
@@ -1387,7 +1422,7 @@ await joinSession({
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site')",
+              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site')",
           },
           pr_number: {
             type: "number",
@@ -1404,14 +1439,14 @@ await joinSession({
     {
       name: "create_vercel_pr",
       description:
-        "Push a branch, create a {{EMPLOYER_PARENT}} PR, and wait for the Vercel preview URL. Polls PR comments for the Vercel bot's deployment status. Returns status='success' with preview URL on successful deployment, or status='failed' with error_summary, inspector_url, and deployment_details when the build fails — so you can fix the issue and push again. Returns 'timeout' if no result within max_wait seconds. Use after making changes in a worktree created by start_dev_branch.",
+        "Push a branch, create a {{EMPLOYER_PARENT}} PR, and wait for the Vercel preview URL. Polls PR comments for the Vercel bot's deployment status. Returns status='success' with preview URL on successful deployment, or status='failed' with action_required='fix_build_error_before_notifying', notify_user=false, error_summary, inspector_url, and deployment_details when the build fails — so you fix it before notifying {{PARENT_1}}. Returns 'timeout' if no result within max_wait seconds. Use after making changes in a worktree created by start_dev_branch.",
       parameters: {
         type: "object",
         properties: {
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site')",
+              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site')",
           },
           branch: {
             type: "string",
@@ -1516,7 +1551,7 @@ await joinSession({
     {
       name: "dev_push",
       description:
-        "Push the current branch to the remote. Sets upstream tracking by default. Auto-detects Vercel-connected repos ({{PERSONAL_DOMAIN}}-site, blackout-pickleball, carplay-mobile-detail) and polls for the Vercel preview URL when an open PR exists. Returns the preview URL so you can send it to {{PARENT_1}} via Telegram. Use instead of 'git push' or 'hookflow git-push'.",
+        "Push the current branch to the remote. Sets upstream tracking by default. Auto-detects Vercel-connected repos (htek-dev-site, blackout-pickleball, carplay-mobile-detail) and polls for the Vercel preview URL when an open PR exists. On success it returns the preview URL to send to {{PARENT_1}}; on Vercel failure it returns action_required='fix_build_error_before_notifying' and notify_user=false so you fix the build before notifying him. Use instead of 'git push' or 'hookflow git-push'.",
       parameters: {
         type: "object",
         properties: {
@@ -1681,7 +1716,7 @@ await joinSession({
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/{{PERSONAL_DOMAIN}}-site').",
+            description: "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site').",
           },
           pr_number: {
             type: "number",
