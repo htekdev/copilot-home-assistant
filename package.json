@@ -3,6 +3,10 @@
     "@ngrok/ngrok": "^1.7.0"
   },
   "dependencies": {
-    "better-sqlite3": "^12.9.0"
+    "better-sqlite3": "^12.9.0",
+    "openai": "^6.39.1",
+    "playwright": "^1.60.0",
+    "sharp": "^0.34.5",
+    "stripe": "^22.1.1"
   }
 }

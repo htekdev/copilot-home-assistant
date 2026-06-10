@@ -1,3 +1,6 @@
+[[extensions]]
+path = "./.github/extensions"
+
 [mcps]
 
 [mcps.builtins]
