@@ -14,7 +14,7 @@
 import { readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
 import { resolve, join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { joinSession } from "@github/copilot-sdk/extension";
+import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
 
 // GramJS-powered large file downloader (MTProto, no 20MB limit)
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -694,7 +694,7 @@ async function pollLoop(session) {
                     await sendTelegramMessage(chatId,
                       `❌ MTProto download failed: ${err.message.slice(0, 150)}\n\n` +
                       `**Workaround:** Save the video locally and share the file path:\n` +
-                      `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\``
+                      `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\``
                     );
                     const captionPart = caption ? ` Caption: "${caption}".` : "";
                     await session.send({
@@ -715,7 +715,7 @@ async function pollLoop(session) {
                   ? `**To enable large file downloads**, add to your .env:\n\`TELEGRAM_API_ID=your_id\`\n\`TELEGRAM_API_HASH=your_hash\`\n(Get them free at https://my.telegram.org/apps)\n\n`
                   : "") +
                 `**Workaround:** Save the video to your computer and share the file path:\n` +
-                `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\`\n\n` +
+                `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\`\n\n` +
                 `I'll pick it up from there and handle the rest! 🎬`
               );
 
@@ -766,7 +766,7 @@ async function pollLoop(session) {
                   await sendTelegramMessage(chatId,
                     `📹 This video is too large for Telegram's Bot API download limit (20MB).\n\n` +
                     `**Workaround:** Save it locally and share the file path:\n` +
-                    `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\`\n\n` +
+                    `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\`\n\n` +
                     `I'll handle it from there! 🎬`
                   );
                   const captionPart = caption ? ` Caption: "${caption}".` : "";
@@ -802,11 +802,11 @@ async function pollLoop(session) {
 let pollStarted = false;
 
 // ---------------------------------------------------------------------------
-// Dynamic agent discovery — reads .github/agents/*.agent.md at startup.
+// Dynamic agent discovery — reads .{{EMPLOYER_PARENT}}/agents/*.agent.md at startup.
 // The main agent (AI) decides which agent to use — no heuristics.
 // ---------------------------------------------------------------------------
 function discoverAgents() {
-  const agentsDir = resolve(process.cwd(), ".github", "agents");
+  const agentsDir = resolve(process.cwd(), ".{{EMPLOYER_PARENT}}", "agents");
   if (!existsSync(agentsDir)) return [];
   return readdirSync(agentsDir)
     .filter((f) => f.endsWith(".agent.md"))
