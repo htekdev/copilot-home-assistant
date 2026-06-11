@@ -1,0 +1,55 @@
+name: "Block Legacy Finance Tools (Era.app Migration)"
+description: >
+  Blocks all legacy budget-tracker and financial-connector tool calls.
+  era.app is the ONLY source of financial truth (48 MCP tools live).
+  All balance, transaction, spending, and budget queries must go through
+  era-context-* MCP tools. Triggered by era.app migration (2026-06-10).
+  YAML SYNTAX NOTE: The `on:` key MUST be quoted as `"on":` to avoid YAML
+  boolean parsing. Canonically fixed 2026-06-10 (commit 240cf8785).
+  Check git log before re-editing this file.
+  Tool name format: era-context-NAMESPACE__tool_name (double underscore).
+"on":
+  hooks:
+    types: [preToolUse]
+    tools:
+      # budget-tracker extension tools
+      - add_expense
+      - add_income
+      - budget_summary
+      - set_budget
+      - budget_vs_actual
+      - add_recurring_bill
+      - upcoming_bills
+      # financial-connector extension tools (Plaid/legacy)
+      - get_balances
+      - get_transactions
+      - get_spending_summary
+      - get_recurring
+      - sync_accounts
+blocking: true
+steps:
+  - name: Redirect to era.app MCP tools
+    run: |
+      $tool = $env:TOOL_NAME
+
+      $suggestions = @{
+        "add_expense"          = "era-context-transactions__manage_manual_transaction (type=expense)"
+        "add_income"           = "era-context-transactions__manage_manual_transaction (type=income)"
+        "budget_summary"       = "era-context-insights__analyze_spending (group_by=category)"
+        "set_budget"           = "era-context-insights__* (use era.app dashboard for budget limits)"
+        "budget_vs_actual"     = "era-context-insights__compare_spending_periods or era-context-insights__analyze_spending"
+        "add_recurring_bill"   = "era-context-transactions__list_recurring_charges (read-only — add in era.app dashboard)"
+        "upcoming_bills"       = "era-context-transactions__list_recurring_charges"
+        "get_balances"         = "era-context-accounts__list_financial_accounts"
+        "get_transactions"     = "era-context-transactions__list_transactions"
+        "get_spending_summary" = "era-context-insights__analyze_spending (period=this_month, group_by=category)"
+        "get_recurring"        = "era-context-transactions__list_recurring_charges"
+        "sync_accounts"        = "era-context-accounts__* (era.app auto-syncs every few hours — manual sync rarely needed)"
+      }
+
+      $alt = $suggestions[$tool]
+      if (-not $alt) { $alt = "era-context-* tools (run list_tools to discover available era-context-* tools)" }
+
+      Write-Error "BLOCKED: $tool is a legacy finance tool. era.app has 48 live MCP tools. Use $alt instead."
+      exit 1
+
