@@ -2,9 +2,11 @@
 
 **An autonomous AI home assistant powered by GitHub Copilot CLI + Telegram.**
 
-A multi-agent system that manages your family's daily life — tasks, calendars, meals, shopping, finances, health, home maintenance, and more. It runs on [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli), communicates through Telegram, and operates autonomously on scheduled cron jobs.
+A multi-agent system that manages your family's daily life — tasks, calendars, meals, shopping, finances, health, home maintenance, and more. It runs on the [new standalone GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-for-common-tasks/use-copilot-in-the-cli) (v1.0+), communicates through Telegram, and operates autonomously on scheduled cron jobs.
 
 > **This is a real system.** It was built and battle-tested by a family of four (soon five) to run their household. It's not a demo — it's been managing groceries, paying bill reminders, coordinating schedules, tracking home maintenance, coaching productivity, and sending morning briefings every day.
+
+> **⚠️ CLI Version:** This system requires the **new standalone GitHub Copilot CLI** (`copilot` command, v1.0+). It does **not** use the old deprecated `gh copilot` GitHub CLI extension. If you were using the old extension, you'll need to [migrate to the new CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-for-common-tasks/use-copilot-in-the-cli#replacing-the-retired-copilot-extension) — this system is already built for the new version.
 
 ---
 
@@ -72,7 +74,7 @@ A multi-agent system that manages your family's daily life — tasks, calendars,
 
 ### Prerequisites
 
-- [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) (requires GitHub Copilot subscription)
+- **[GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-for-common-tasks/use-copilot-in-the-cli)** (v1.0+) — the new **standalone** `copilot` binary. This system does **not** use the old deprecated `gh copilot` extension. If you previously used the extension, [follow the migration guide](https://docs.github.com/en/copilot/how-tos/use-copilot-for-common-tasks/use-copilot-in-the-cli#replacing-the-retired-copilot-extension). Requires a GitHub Copilot subscription.
 - [Node.js](https://nodejs.org/) 20+
 - A [Telegram Bot](https://core.telegram.org/bots#how-do-i-create-a-bot) (free, takes 2 minutes)
 - Optionally: Google Cloud project for Calendar/Gmail/Maps integration
@@ -123,13 +125,13 @@ For Gmail, Calendar, and Tasks:
 2. Enable Gmail, Calendar, and Tasks APIs
 3. Create OAuth 2.0 credentials (Desktop app)
 4. Add `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` to `.env`
-5. Run `copilot-cli` and use the `google_auth_url` tool to authenticate
+5. Run `copilot` and use the `google_auth_url` tool to authenticate
 
 ### 5. Start the Assistant
 
 ```bash
-# Start Copilot CLI with the Telegram bridge
-copilot-cli
+# Start the GitHub Copilot CLI with the Telegram bridge
+copilot
 
 # The cron scheduler and Telegram bridge will start automatically
 # via the extensions in .github/extensions/
@@ -399,7 +401,7 @@ MIT — see [LICENSE](LICENSE).
 
 ## 🙏 Credits
 
-Built with [GitHub Copilot CLI](https://docs.github.com/en/copilot/github-copilot-in-the-cli) — the AI that makes this entire system possible.
+Built with the [new standalone GitHub Copilot CLI](https://docs.github.com/en/copilot/how-tos/use-copilot-for-common-tasks/use-copilot-in-the-cli) — the AI that makes this entire system possible.
 
 The agents, extensions, and architecture were designed and refined through daily use by a real family. Every feature exists because someone needed it.
 
