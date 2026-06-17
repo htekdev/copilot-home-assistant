@@ -1,0 +1,27 @@
+{
+  "name": "{{PARENT_1_FULL_NAME}}",
+  "brand": "{{PERSONAL_DOMAIN}}",
+  "handle": "htekdev",
+  "github": {
+    "username": "htekdev",
+    "org": "htekdev",
+    "repos_root": "C:\\Repos\\htekdev"
+  },
+  "site": {
+    "url": "https://{{PERSONAL_DOMAIN}}",
+    "repo": "htekdev/{{PERSONAL_SITE_REPO}}",
+    "description": "{{PARENT_1_FULL_NAME}}'s personal developer site — AI-native engineering, agentic development, GitHub Copilot"
+  },
+  "social": {
+    "twitter": "@htekdev",
+    "linkedin": "{{PARENT_1_LINKEDIN}}",
+    "youtube": "@htekdev",
+    "tiktok": "@htekdev"
+  },
+  "vercel": {
+    "org": "{{VERCEL_ORG}}"
+  },
+  "canonical_aliases": ["htekdev", "{{PERSONAL_DOMAIN}}", "htek dev"],
+  "invalid_aliases": ["HStackDev", "h-tek-dev", "hstack", "HTechDev", "HtekDev", "hteck", "htech"],
+  "note": "Voice transcription WILL mangle the handle. Always use htekdev exactly. This file is the canonical identity source — never hardcode from memory or voice transcript."
+}
