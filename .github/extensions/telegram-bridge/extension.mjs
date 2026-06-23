@@ -1,5 +1,5 @@
 /**
- * Telegram Bridge Extension for {{PRODUCT}} CLI
+ * Telegram Bridge Extension for GitHub Copilot CLI
  *
  * Bridges Telegram messages <-> Copilot CLI sessions using long polling.
  * - Telegram messages become user prompts in the session.
@@ -11,19 +11,28 @@
  * Set BRIDGE_MODE=standalone in .env to disable this extension
  * (when using the standalone bridge service instead).
  */
-import { readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
+import { readFileSync, existsSync, writeFileSync, readdirSync, mkdirSync } from "node:fs";
 import { resolve, join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
+import { execSync } from "node:child_process";
+import { joinSession } from "@github/copilot-sdk/extension";
 
 // GramJS-powered large file downloader (MTProto, no 20MB limit)
+// Lazy-loaded on first use to avoid blocking extension startup (~2-4s cold import)
 const __dirname = dirname(fileURLToPath(import.meta.url));
 let downloadLargeFile = null;
-try {
-  const mod = await import(resolve(__dirname, "gramjs-downloader.mjs"));
-  downloadLargeFile = mod.downloadLargeFile;
-} catch {
-  // GramJS not available — will fall back to Bot API (with 20MB limit)
+let _gramjsLoadAttempted = false;
+
+async function getDownloadLargeFile() {
+  if (_gramjsLoadAttempted) return downloadLargeFile;
+  _gramjsLoadAttempted = true;
+  try {
+    const mod = await import(resolve(__dirname, "gramjs-downloader.mjs"));
+    downloadLargeFile = mod.downloadLargeFile;
+  } catch {
+    // GramJS not available — will fall back to Bot API (with 20MB limit)
+  }
+  return downloadLargeFile;
 }
 
 // ---------------------------------------------------------------------------
@@ -94,6 +103,529 @@ try {
 function isUserAllowed(userId) {
   if (ALLOWED_USERS.size === 0) return true; // no restriction if empty
   return ALLOWED_USERS.has(String(userId));
+}
+
+// ---------------------------------------------------------------------------
+// PR Merge Approval System
+// Agents call merge_pr(repo, pr_number, description) → Telegram inline keyboard
+// → {{PARENT_1}} taps ✅/❌ → deterministic merge or denial
+// ---------------------------------------------------------------------------
+
+/** In-memory pending approval requests: requestId → { resolve, msgText, messageId } */
+const pendingApprovals = new Map();
+
+const {{PARENT_1}}_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_1}}";
+const {{PARENT_2}}_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_2}}";
+const CAREGIVER_CHAT_ID = "{{TELEGRAM_CAREGIVER}}";
+const PR_MERGE_CONFIG_PATH = resolve(process.cwd(), "data", "pr-merge-config.json");
+const USER_SCOPES_PATH = resolve(process.cwd(), "data", "telegram-user-scopes.json");
+
+function loadUserScopes() {
+  try {
+    if (existsSync(USER_SCOPES_PATH)) {
+      return JSON.parse(readFileSync(USER_SCOPES_PATH, "utf-8"));
+    }
+  } catch { /* fall back to empty */ }
+  return { version: 1, users: {} };
+}
+
+function getUserScope(userId) {
+  const config = loadUserScopes();
+  return config.users?.[String(userId)] || null;
+}
+
+function loadMergeConfig() {
+  try {
+    if (existsSync(PR_MERGE_CONFIG_PATH)) {
+      return JSON.parse(readFileSync(PR_MERGE_CONFIG_PATH, "utf-8"));
+    }
+  } catch { /* fall back to defaults */ }
+  return {
+    version: 1,
+    defaults: {
+      require_approval: true,
+      approver_chat_id: {{PARENT_1}}_CHAT_ID_DEFAULT,
+      timeout_seconds: 900,
+      merge_method: "squash",
+      delete_branch: true,
+    },
+    rules: [],
+  };
+}
+
+function checkApprovalRequired(config, repo, author) {
+  const rules = config.rules || [];
+  for (const rule of rules) {
+    if (rule.enabled === false) continue;
+    const { match } = rule;
+    if (!match) continue;
+    let ruleMatches = true;
+    if (match.repo_pattern && !new RegExp(match.repo_pattern).test(repo)) ruleMatches = false;
+    if (match.author && match.author !== author) ruleMatches = false;
+    if (ruleMatches) return rule.require_approval !== false;
+  }
+  // No rule matched — use default
+  return config.defaults?.require_approval !== false;
+}
+
+function resolveApproverChatId(config, explicitApproverChatId, repo) {
+  const explicit = explicitApproverChatId ? String(explicitApproverChatId).trim() : "";
+  if (explicit) return explicit;
+
+  // Check rules for repo-specific approver_chat_id (first matching rule wins)
+  if (repo) {
+    const rules = config.rules || [];
+    for (const rule of rules) {
+      if (rule.enabled === false) continue;
+      const { match } = rule;
+      if (!match) continue;
+      if (match.repo_pattern && !new RegExp(match.repo_pattern).test(repo)) continue;
+      if (rule.approver_chat_id) return String(rule.approver_chat_id);
+    }
+  }
+
+  if (activeChatId && isUserAllowed(activeChatId)) {
+    return String(activeChatId);
+  }
+
+  return String(config.defaults?.approver_chat_id || {{PARENT_1}}_CHAT_ID_DEFAULT);
+}
+
+function describeApprover(chatId) {
+  const normalized = String(chatId || "");
+  if (normalized === {{PARENT_1}}_CHAT_ID_DEFAULT) return "{{PARENT_1}}";
+  if (normalized === {{PARENT_2}}_CHAT_ID_DEFAULT) return "{{PARENT_2}}";
+  if (normalized === CAREGIVER_CHAT_ID) return "{{CAREGIVER_NAME}}";
+  return `chat ${normalized}`;
+}
+
+function generateRequestId() {
+  return (
+    Math.random().toString(36).slice(2, 10) +
+    Math.random().toString(36).slice(2, 10)
+  ).slice(0, 16);
+}
+
+function getGhToken() {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
+  if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
+  try {
+    if (existsSync(ENV_FILE)) {
+      const content = readFileSync(ENV_FILE, "utf-8");
+      for (const line of content.split("\n")) {
+        const t = line.trim();
+        for (const key of ["GITHUB_TOKEN", "GH_TOKEN"]) {
+          if (t.startsWith(`${key}=`)) {
+            let v = t.slice(key.length + 1).trim();
+            if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
+            if (v) return v;
+          }
+        }
+      }
+    }
+  } catch { /* ignore */ }
+  // Fall back to gh CLI auth token
+  try {
+    const token = execSync("gh auth token", { encoding: "utf-8", timeout: 5000 }).trim();
+    if (token) return token;
+  } catch { /* gh CLI not available or not authenticated */ }
+  return "";
+}
+
+async function ghRestMerge(path, ghToken, options = {}) {
+  const res = await fetch(`https://api.github.com${path}`, {
+    headers: {
+      Authorization: `token ${ghToken}`,
+      Accept: "application/vnd.github.v3+json",
+      "User-Agent": "copilot-pr-approval/1.0",
+      "Content-Type": "application/json",
+    },
+    ...options,
+  });
+  // Handle empty responses (e.g., 204 No Content from branch delete)
+  let data = null;
+  const text = await res.text();
+  if (text) {
+    try { data = JSON.parse(text); } catch { data = { raw: text }; }
+  }
+  return { ok: res.ok, status: res.status, data };
+}
+
+/**
+ * Check CI / deployment status for a PR's head commit.
+ * Inspects both GitHub Check Runs (Actions, Vercel-as-check) and legacy
+ * commit Statuses (Vercel deployments often appear here as state=error).
+ *
+ * Returns:
+ *   { ok: true, summary }                 — no failures detected
+ *   { ok: false, error, failures }         — at least one failed/errored check
+ */
+async function checkPrCiStatus(repo, sha, ghToken) {
+  const FAIL_CONCLUSIONS = new Set([
+    "failure", "cancelled", "timed_out", "action_required", "startup_failure",
+  ]);
+  const FAIL_STATES = new Set(["failure", "error"]);
+
+  const failures = [];
+  let totalChecks = 0;
+  let pendingChecks = 0;
+
+  // 1) Check Runs (modern GitHub Checks API — Actions, Vercel, most integrations)
+  try {
+    const cr = await ghRestMerge(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`, ghToken);
+    if (cr.ok && Array.isArray(cr.data?.check_runs)) {
+      for (const run of cr.data.check_runs) {
+        totalChecks++;
+        if (run.status !== "completed") {
+          pendingChecks++;
+          continue;
+        }
+        if (FAIL_CONCLUSIONS.has(run.conclusion)) {
+          failures.push({
+            type: "check_run",
+            name: run.name,
+            conclusion: run.conclusion,
+            url: run.html_url || run.details_url,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: `Failed to fetch check runs: ${err.message}`, failures: [] };
+  }
+
+  // 2) Combined commit Status (legacy API — Vercel deployments often post here)
+  try {
+    const st = await ghRestMerge(`/repos/${repo}/commits/${sha}/status`, ghToken);
+    if (st.ok && Array.isArray(st.data?.statuses)) {
+      for (const status of st.data.statuses) {
+        totalChecks++;
+        if (status.state === "pending") {
+          pendingChecks++;
+          continue;
+        }
+        if (FAIL_STATES.has(status.state)) {
+          failures.push({
+            type: "status",
+            name: status.context,
+            state: status.state,
+            description: status.description,
+            url: status.target_url,
+          });
+        }
+      }
+    }
+  } catch (err) {
+    return { ok: false, error: `Failed to fetch commit statuses: ${err.message}`, failures: [] };
+  }
+
+  if (failures.length > 0) {
+    const lines = failures.map((f) => {
+      const result = f.conclusion || f.state;
+      const desc = f.description ? ` — ${f.description}` : "";
+      return `  • ${f.name}: ${result}${desc}`;
+    });
+    return {
+      ok: false,
+      error:
+        `CI/deployment checks failed for commit ${sha.slice(0, 7)} ` +
+        `(${failures.length} failing of ${totalChecks} total):\n${lines.join("\n")}`,
+      failures,
+      total: totalChecks,
+      pending: pendingChecks,
+    };
+  }
+
+  return {
+    ok: true,
+    summary: `${totalChecks} checks (${pendingChecks} pending, ${totalChecks - pendingChecks} passing)`,
+    total: totalChecks,
+    pending: pendingChecks,
+  };
+}
+
+async function executePrMerge(repo, prNumber, mergeMethod, doDeleteBranch, ghToken) {
+  // Fetch PR details
+  const prInfo = await ghRestMerge(`/repos/${repo}/pulls/${prNumber}`, ghToken);
+  if (!prInfo.ok) {
+    return {
+      status: "failed",
+      error: `Could not fetch PR #${prNumber} from ${repo}: ${prInfo.data?.message}`,
+    };
+  }
+  const pr = prInfo.data;
+  if (pr.state !== "open") {
+    return { status: "failed", error: `PR #${prNumber} is not open (state: ${pr.state})` };
+  }
+  const headBranch = pr.head?.ref ?? "";
+
+  // Execute merge
+  const mergeRes = await ghRestMerge(
+    `/repos/${repo}/pulls/${prNumber}/merge`,
+    ghToken,
+    { method: "PUT", body: JSON.stringify({ merge_method: mergeMethod }) }
+  );
+  if (!mergeRes.ok) {
+    let hint = "";
+    if (mergeRes.status === 405) hint = "Branch protection requires another reviewer.";
+    else if (mergeRes.status === 409) hint = "Merge conflicts — resolve first.";
+    else if (mergeRes.status === 422) hint = mergeRes.data?.message || "Check branch protection rules.";
+    return {
+      status: "failed",
+      error: mergeRes.data?.message || "Merge failed",
+      http_status: mergeRes.status,
+      hint,
+    };
+  }
+
+  // Delete branch if requested
+  let branchDeleted = false;
+  if (doDeleteBranch && headBranch) {
+    const delRes = await ghRestMerge(
+      `/repos/${repo}/git/refs/heads/${headBranch}`,
+      ghToken,
+      { method: "DELETE" }
+    );
+    branchDeleted = delRes.status === 204;
+  }
+
+  return {
+    status: "merged",
+    repo,
+    pr_number: prNumber,
+    pr_title: pr.title ?? `PR #${prNumber}`,
+    merge_method: mergeMethod,
+    merge_commit_sha: mergeRes.data?.sha ?? "",
+    branch_deleted: branchDeleted,
+    head_branch: headBranch,
+  };
+}
+
+/**
+ * Called by the polling loop when Telegram sends a callback_query.
+ * Routes approval/denial decisions back to waiting merge_pr tool calls.
+ */
+async function handleApprovalCallback(callbackQuery) {
+  const data = callbackQuery.data || "";
+  const messageId = callbackQuery.message?.message_id;
+  const chatId = String(callbackQuery.message?.chat?.id || callbackQuery.from?.id || "");
+  const fromId = String(callbackQuery.from?.id || "");
+
+  // Handle merge approval callbacks in two formats:
+  //   merge:{approve|deny}:{requestId}           — normal tool path (Promise in pendingApprovals)
+  //   mpr:{a|d}:{pr_number}:{short_repo}         — direct path (no pending Promise; bridge dispatches to session)
+  const matchNormal = data.match(/^merge:(approve|deny):(.{8,16})$/);
+  const matchDirect = data.match(/^mpr:(a|d):(\d+):(.+)$/);
+
+  if (!matchNormal && !matchDirect) {
+    // Not our callback — answer silently so Telegram stops showing spinner
+    try {
+      await telegramApi("answerCallbackQuery", { callback_query_id: callbackQuery.id });
+    } catch { /* ignore */ }
+    return;
+  }
+
+  // ── Direct path: mpr format (no pending Promise needed) ──────────────────
+  if (matchDirect) {
+    const [, act, prNumStr, shortRepo] = matchDirect;
+    const fullRepo = shortRepo.includes("/") ? shortRepo : `htekdev/${shortRepo}`;
+    const prNum = parseInt(prNumStr, 10);
+    const emoji = act === "a" ? "✅" : "❌";
+    const label = act === "a" ? "Approved" : "Denied";
+
+    try {
+      await telegramApi("editMessageReplyMarkup", {
+        chat_id: chatId, message_id: messageId, reply_markup: { inline_keyboard: [] },
+      });
+    } catch {}
+
+    await telegramApi("answerCallbackQuery", {
+      callback_query_id: callbackQuery.id,
+      text: `${emoji} ${label}!`,
+    }).catch(() => {});
+
+    if (act === "a") {
+      // Execute the merge directly via GitHub API
+      try {
+        const ghToken = getGhToken();
+        if (!ghToken) {
+          await telegramApi("sendMessage", {
+            chat_id: chatId,
+            text: `⚠️ Cannot merge ${fullRepo}#${prNum} — no GitHub token available.`,
+            parse_mode: "HTML",
+          });
+          return;
+        }
+
+        const config = loadMergeConfig();
+        const mergeMethod = config.defaults?.merge_method || "squash";
+        const doDeleteBranch = config.defaults?.delete_branch !== false;
+
+        const result = await executePrMerge(fullRepo, prNum, mergeMethod, doDeleteBranch, ghToken);
+
+        if (result.status === "merged") {
+          const branchNote = result.branch_deleted ? "\n🗑️ Branch deleted" : "";
+          await telegramApi("sendMessage", {
+            chat_id: chatId,
+            text:
+              `✅ <b>Merged!</b> ${fullRepo}#${prNum} (${mergeMethod})\n` +
+              `<i>${result.pr_title || ""}</i>${branchNote}`,
+            parse_mode: "HTML",
+          });
+          // Notify the session so the agent can handle post-merge tasks
+          if (_sessionRef) {
+            queueOrSend(_sessionRef, {
+              prompt: `[PR Merged]: ${fullRepo}#${prNum} "${result.pr_title || ""}" was merged (${mergeMethod}) after {{PARENT_1}}'s approval. Branch ${result.head_branch || ""} ${result.branch_deleted ? "was deleted" : "still exists"}. Handle any post-merge tasks: trigger article-promoter if blog article, update issues, notify relevant agents, etc.`,
+              mode: "immediate",
+            }, chatId);
+          }
+        } else {
+          await telegramApi("sendMessage", {
+            chat_id: chatId,
+            text: `⚠️ Merge failed for ${fullRepo}#${prNum}: ${result.error || "Unknown error"}${result.hint ? "\n💡 " + result.hint : ""}`,
+            parse_mode: "HTML",
+          });
+        }
+      } catch (mergeErr) {
+        // Ensure {{PARENT_1}} always gets feedback even if something crashes
+        await telegramApi("sendMessage", {
+          chat_id: chatId,
+          text: `⚠️ Error during merge of ${fullRepo}#${prNum}: ${mergeErr.message || "Unknown error"}`,
+          parse_mode: "HTML",
+        }).catch(() => {});
+      }
+    } else if (act === "d") {
+      await telegramApi("sendMessage", {
+        chat_id: chatId,
+        text: `❌ PR merge denied — ${fullRepo}#${prNum} not merged.`,
+        parse_mode: "HTML",
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  const [, action, requestId] = matchNormal;
+  const config = loadMergeConfig();
+  const pending = pendingApprovals.get(requestId);
+  const approverChatId = String(pending?.approverChatId || config.defaults?.approver_chat_id || {{PARENT_1}}_CHAT_ID_DEFAULT);
+
+  // Also re-derive the approver from config rules for the repo.
+  // Ensures repo-specific approvers (e.g. Sofia for taller-mecanico) can always act
+  // even if pending.approverChatId was stored without full repo context or the calling
+  // agent didn't pass an explicit approver_chat_id.
+  const configApproverChatId = pending?.repo
+    ? resolveApproverChatId(config, null, pending.repo)
+    : approverChatId;
+
+  // Security: the intended approver OR the config-designated approver can act
+  if (fromId !== approverChatId && fromId !== configApproverChatId) {
+    try {
+      await telegramApi("answerCallbackQuery", {
+        callback_query_id: callbackQuery.id,
+        text: "❌ Not authorized.",
+      });
+    } catch { /* ignore */ }
+    return;
+  }
+
+  if (!pending) {
+    try {
+      await telegramApi("answerCallbackQuery", {
+        callback_query_id: callbackQuery.id,
+        text: "⚠️ Already handled or expired.",
+      });
+    } catch { /* ignore */ }
+    return;
+  }
+
+  // Remove from map immediately to prevent double-processing
+  pendingApprovals.delete(requestId);
+
+  const emoji = action === "approve" ? "✅" : "❌";
+  const approverName = callbackQuery.from?.first_name || describeApprover(approverChatId);
+  const decisionText = action === "approve" ? `Approved by ${approverName}` : `Denied by ${approverName}`;
+
+  // Edit the original message: remove buttons and append decision
+  try {
+    await telegramApi("editMessageText", {
+      chat_id: chatId,
+      message_id: messageId,
+      text: (pending.msgText || "PR merge request") + `\n\n${emoji} <b>${decisionText}</b>`,
+      parse_mode: "HTML",
+      reply_markup: { inline_keyboard: [] },
+    });
+  } catch { /* non-critical — button removal is best-effort */ }
+
+  // Answer the callback so Telegram clears the spinner
+  try {
+    await telegramApi("answerCallbackQuery", {
+      callback_query_id: callbackQuery.id,
+      text: `${emoji} ${decisionText}!`,
+    });
+  } catch { /* ignore */ }
+
+  if (pending.mode === "direct_merge") {
+    if (action === "approve") {
+      try {
+        const ghToken = getGhToken();
+        if (!ghToken) {
+          await telegramApi("sendMessage", {
+            chat_id: chatId,
+            text: `⚠️ Cannot merge ${pending.repo}#${pending.prNumber} — no GitHub token available.`,
+            parse_mode: "HTML",
+          });
+          return;
+        }
+
+        const result = await executePrMerge(
+          pending.repo,
+          pending.prNumber,
+          pending.mergeMethod,
+          pending.deleteBranch,
+          ghToken
+        );
+
+        if (result.status === "merged") {
+          const branchNote = result.branch_deleted ? "\n🗑️ Branch deleted" : "";
+          await telegramApi("sendMessage", {
+            chat_id: chatId,
+            text:
+              `✅ <b>Merged!</b> ${pending.repo}#${pending.prNumber} (${pending.mergeMethod})\n` +
+              `<i>${result.pr_title || ""}</i>${branchNote}`,
+            parse_mode: "HTML",
+          });
+          if (_sessionRef) {
+            queueOrSend(_sessionRef, {
+              prompt: `[PR Merged]: ${pending.repo}#${pending.prNumber} "${result.pr_title || ""}" was merged (${pending.mergeMethod}) after ${approverName}'s approval. Branch ${result.head_branch || ""} ${result.branch_deleted ? "was deleted" : "still exists"}. Handle any post-merge tasks: trigger article-promoter if blog article, update issues, notify relevant agents, etc.`,
+              mode: "immediate",
+            }, chatId);
+          }
+        } else {
+          await telegramApi("sendMessage", {
+            chat_id: chatId,
+            text: `⚠️ Merge failed for ${pending.repo}#${pending.prNumber}: ${result.error || "Unknown error"}${result.hint ? "\n💡 " + result.hint : ""}`,
+            parse_mode: "HTML",
+          });
+        }
+      } catch (mergeErr) {
+        await telegramApi("sendMessage", {
+          chat_id: chatId,
+          text: `⚠️ Error during merge of ${pending.repo}#${pending.prNumber}: ${mergeErr.message || "Unknown error"}`,
+          parse_mode: "HTML",
+        }).catch(() => {});
+      }
+    } else {
+      await telegramApi("sendMessage", {
+        chat_id: chatId,
+        text: `❌ PR merge denied — ${pending.repo}#${pending.prNumber} not merged.`,
+        parse_mode: "HTML",
+      }).catch(() => {});
+    }
+    return;
+  }
+
+  // Unblock the waiting merge_pr tool call
+  pending.resolve(action === "approve" ? "approved" : "denied");
 }
 
 // ---------------------------------------------------------------------------
@@ -322,6 +854,25 @@ let activeChatId = null;
 let pollController = null;
 let typingInterval = null;
 
+// ---------------------------------------------------------------------------
+// Session-aware local message queue
+// Holds messages locally when the agent is busy and flushes one-at-a-time
+// on tool.execution_complete — prevents inconsistent runtime queue behavior.
+// ---------------------------------------------------------------------------
+let agentBusy = false;
+const localQueue = []; // Array of { options, chatId } objects
+let _sessionRef = null; // Set after joinSession()
+
+function queueOrSend(session, options, chatId) {
+  // Always send immediately — queue disabled per {{PARENT_1}} (2026-05-20)
+  session.send(options).catch((err) => {
+    session.log(`Failed to send prompt: ${err.message}`, { level: "warning" });
+  });
+}
+
+// flushOne() — DISABLED per {{PARENT_1}} (2026-05-20) — queue system removed
+// function flushOne() { ... }
+
 async function skipOldUpdates() {
   try {
     const result = await telegramApi("getUpdates", {
@@ -382,7 +933,7 @@ async function pollLoop(session) {
         body: JSON.stringify({
           offset: pollOffset,
           timeout: 10,
-          allowed_updates: ["message"],
+          allowed_updates: ["message", "callback_query"],
         }),
         signal: pollController.signal,
       });
@@ -410,6 +961,12 @@ async function pollLoop(session) {
 
       for (const update of data.result) {
         pollOffset = update.update_id + 1;
+
+        // Handle inline keyboard callbacks (PR merge approval decisions)
+        if (update.callback_query) {
+          await handleApprovalCallback(update.callback_query);
+          continue;
+        }
 
         if (!update.message) continue;
 
@@ -441,7 +998,7 @@ async function pollLoop(session) {
           await sendTelegramMessage(
             chatId,
             `Connected! Your chat ID is: ${chatId}\n\n` +
-              `Send any message and it will be forwarded to your {{PRODUCT}} CLI session.\n\n` +
+              `Send any message and it will be forwarded to your GitHub Copilot CLI session.\n\n` +
               `Commands:\n/status — check bridge status\n/help — show this message`
           );
           continue;
@@ -479,16 +1036,11 @@ async function pollLoop(session) {
 
           startTypingIndicator(chatId);
 
-          // Fire-and-forget with setTimeout to avoid blocking the poll loop.
-          // mode: "immediate" steers the agent mid-turn instead of queuing.
-          setTimeout(() => {
-            session.send({ prompt: `[Telegram from ${from} (user ${userId})]: ${msg.text}`, mode: "immediate" }).catch((err) => {
-              session.log(
-                `Failed to inject prompt: ${err.message}`,
-                { level: "warning" }
-              );
-            });
-          }, 0);
+          // Session-aware queue: hold locally when busy, send when idle
+          queueOrSend(session, {
+            prompt: `[Telegram from ${from} (user ${userId})]: ${msg.text}`,
+            mode: "immediate",
+          }, chatId);
           continue;
         }
 
@@ -515,7 +1067,8 @@ async function pollLoop(session) {
                 // Download the image
                 const imgRes = await fetch(fileUrl);
                 const imgBuffer = await imgRes.arrayBuffer();
-                const base64Data = Buffer.from(imgBuffer).toString("base64");
+                const imgNodeBuffer = Buffer.from(imgBuffer);
+                const base64Data = imgNodeBuffer.toString("base64");
 
                 // Determine mime type from file path
                 const ext = fileInfo.file_path.split(".").pop().toLowerCase();
@@ -529,8 +1082,17 @@ async function pollLoop(session) {
                 };
                 const mimeType = mimeMap[ext] || "image/jpeg";
 
-                await session.send({
-                  prompt: `[Telegram from ${from} (user ${userId})]: ${caption}`,
+                // Persist image locally so sub-agents can access via view tool
+                const imgDir = resolve(process.cwd(), "data", "telegram-images");
+                mkdirSync(imgDir, { recursive: true });
+                const timestamp = Date.now();
+                const imgFilename = `${timestamp}-${photo.file_id}.${ext || "jpg"}`;
+                const imgLocalPath = join(imgDir, imgFilename);
+                writeFileSync(imgLocalPath, imgNodeBuffer);
+                const imgAbsPath = resolve(imgLocalPath);
+
+                queueOrSend(session, {
+                  prompt: `[Telegram from ${from} (user ${userId})]: ${caption}\n[Image saved to: ${imgAbsPath}]`,
                   mode: "immediate",
                   attachments: [
                     {
@@ -540,7 +1102,7 @@ async function pollLoop(session) {
                       displayName: fileInfo.file_path.split("/").pop(),
                     },
                   ],
-                });
+                }, chatId);
               } catch (err) {
                 session.log(
                   `Failed to process image: ${err.message}`,
@@ -622,10 +1184,10 @@ async function pollLoop(session) {
                 const transcript = result.text || "(empty transcription)";
 
                 await session.log(`Transcribed: ${transcript.slice(0, 100)}...`);
-                await session.send({
+                queueOrSend(session, {
                   prompt: `[Telegram from ${from} (user ${userId})]: ${transcript}`,
                   mode: "immediate",
-                });
+                }, chatId);
               } catch (err) {
                 session.log(`Failed to transcribe voice: ${err.message}`, { level: "warning" });
                 await sendTelegramMessage(chatId, `Failed to transcribe voice note: ${err.message.slice(0, 100)}`);
@@ -649,7 +1211,8 @@ async function pollLoop(session) {
               const limitMB = (TELEGRAM_GETFILE_LIMIT / (1024 * 1024)).toFixed(0);
 
               // Try MTProto download via GramJS (no file size limit)
-              if (downloadLargeFile && TELEGRAM_API_ID && TELEGRAM_API_HASH) {
+              const _dlFn = await getDownloadLargeFile();
+              if (_dlFn && TELEGRAM_API_ID && TELEGRAM_API_HASH) {
                 await session.log(`🎬 Video ${fileSizeMB}MB exceeds Bot API limit — using MTProto (GramJS)...`);
                 await sendTelegramMessage(chatId, `📹 Got your video (${fileSizeMB}MB) — downloading via MTProto... ⏳`);
 
@@ -659,7 +1222,7 @@ async function pollLoop(session) {
                     const ext = (videoObj.file_name || videoObj.mime_type || "mp4").split(/[./]/).pop() || "mp4";
                     const videoFile = resolve(dataDir, `telegram-video-${Date.now()}.${ext}`);
 
-                    await downloadLargeFile({
+                    await _dlFn({
                       fileId: videoObj.file_id,
                       fileSize,
                       outputPath: videoFile,
@@ -685,10 +1248,10 @@ async function pollLoop(session) {
                     await sendTelegramMessage(chatId, `✅ Video downloaded and analyzed! Processing your request...`);
 
                     const captionPart = caption ? ` Caption: "${caption}".` : "";
-                    await session.send({
+                    queueOrSend(session, {
                       prompt: `[Telegram from ${from} (user ${userId})]: Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`,
                       mode: "immediate",
-                    });
+                    }, chatId);
                   } catch (err) {
                     await session.log(`🎬 MTProto download error: ${err.message}`, { level: "warning" });
                     await sendTelegramMessage(chatId,
@@ -697,10 +1260,10 @@ async function pollLoop(session) {
                       `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\``
                     );
                     const captionPart = caption ? ` Caption: "${caption}".` : "";
-                    await session.send({
+                    queueOrSend(session, {
                       prompt: `[Telegram from ${from} (user ${userId})]: Sent a video (${fileSizeMB}MB) but MTProto download failed: ${err.message}.${captionPart} The user has been asked to share the file path instead.`,
                       mode: "immediate",
-                    });
+                    }, chatId);
                   }
                 }, 0);
                 continue;
@@ -711,7 +1274,7 @@ async function pollLoop(session) {
 
               await sendTelegramMessage(chatId,
                 `📹 Got your video (${fileSizeMB}MB) but Telegram's Bot API has a ${limitMB}MB download limit.\n\n` +
-                (downloadLargeFile
+                (_dlFn
                   ? `**To enable large file downloads**, add to your .env:\n\`TELEGRAM_API_ID=your_id\`\n\`TELEGRAM_API_HASH=your_hash\`\n(Get them free at https://my.telegram.org/apps)\n\n`
                   : "") +
                 `**Workaround:** Save the video to your computer and share the file path:\n` +
@@ -721,10 +1284,10 @@ async function pollLoop(session) {
 
               // Still forward the caption/intent to the session so the agent knows what the user wants
               const captionPart = caption ? ` Caption: "${caption}".` : "";
-              await session.send({
+              queueOrSend(session, {
                 prompt: `[Telegram from ${from} (user ${userId})]: Sent a video (${fileSizeMB}MB) but it exceeds the Telegram Bot API ${limitMB}MB download limit.${captionPart} The user has been asked to share the file path instead. Wait for them to provide a local file path.`,
                 mode: "immediate",
-              });
+              }, chatId);
               continue;
             }
 
@@ -755,10 +1318,10 @@ async function pollLoop(session) {
 
                 // Build prompt with summary as context (like voice transcriptions)
                 const captionPart = caption ? ` Caption: "${caption}".` : "";
-                await session.send({
+                queueOrSend(session, {
                   prompt: `[Telegram from ${from} (user ${userId})]: Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`,
                   mode: "immediate",
-                });
+                }, chatId);
               } catch (err) {
                 await session.log(`🎬 Video error: ${err.message}`, { level: "warning" });
                 // Detect the "file is too big" error from Telegram API (fallback for when file_size wasn't available)
@@ -770,10 +1333,10 @@ async function pollLoop(session) {
                     `I'll handle it from there! 🎬`
                   );
                   const captionPart = caption ? ` Caption: "${caption}".` : "";
-                  await session.send({
+                  queueOrSend(session, {
                     prompt: `[Telegram from ${from} (user ${userId})]: Sent a video but it exceeds the Telegram Bot API 20MB download limit.${captionPart} The user has been asked to share the file path instead.`,
                     mode: "immediate",
-                  });
+                  }, chatId);
                 } else {
                   await sendTelegramMessage(chatId, `❌ Failed to process video: ${err.message.slice(0, 200)}`);
                 }
@@ -802,11 +1365,11 @@ async function pollLoop(session) {
 let pollStarted = false;
 
 // ---------------------------------------------------------------------------
-// Dynamic agent discovery — reads .{{EMPLOYER_PARENT}}/agents/*.agent.md at startup.
+// Dynamic agent discovery — reads .github/agents/*.agent.md at startup.
 // The main agent (AI) decides which agent to use — no heuristics.
 // ---------------------------------------------------------------------------
 function discoverAgents() {
-  const agentsDir = resolve(process.cwd(), ".{{EMPLOYER_PARENT}}", "agents");
+  const agentsDir = resolve(process.cwd(), ".github", "agents");
   if (!existsSync(agentsDir)) return [];
   return readdirSync(agentsDir)
     .filter((f) => f.endsWith(".agent.md"))
@@ -866,7 +1429,7 @@ const session = await joinSession({
       // Get current local time in Central timezone
       const now = new Date();
       const localTime = now.toLocaleString("en-US", {
-        timeZone: "{{TIMEZONE}}",
+        timeZone: "America/Chicago",
         weekday: "long",
         year: "numeric",
         month: "long",
@@ -875,6 +1438,44 @@ const session = await joinSession({
         minute: "2-digit",
         hour12: true,
       });
+
+      // ── Per-user agent scoping ──────────────────────────────────────────
+      // If this sender has a scope restriction, ONLY dispatch to their allowed agents.
+      const userScope = getUserScope(senderId);
+      if (userScope && userScope.allowed_agents?.length > 0) {
+        const allowedList = userScope.allowed_agents.join(", ");
+        const outOfScopeReply = userScope.out_of_scope_reply ||
+          `I can only help with ${userScope.scope_label || allowedList}. For other requests, please contact {{PARENT_1}}.`;
+        return {
+          modifiedPrompt:
+            `[Telegram from ${senderName} (user ${senderId})]: "${userMessage}"\n\n` +
+            `Current time: ${localTime} (Central Time).\n` +
+            `Sender identity: ${userScope.display_name || userScope.name} — ${userScope.role}.\n\n` +
+            `⚠️ STRICT SCOPE RESTRICTION — THIS USER IS SCOPED ONLY TO: ${allowedList}\n` +
+            `This user MUST NOT receive any information about family, finance, health, NICU, meals, calendar, or any other domain.\n` +
+            `If the request is NOT about ${userScope.scope_label || allowedList}, respond immediately via telegram_send_message(chat_id: "${senderId}", message: "${outOfScopeReply}") and STOP — do NOT delegate anywhere else.\n\n` +
+            `MANDATORY: You MUST delegate this to the ${allowedList} agent ONLY.\n\n` +
+            `## STEP 0: STEER vs LAUNCH DECISION (check BEFORE delegating)\n` +
+            `Call list_agents() first to see IDLE/RUNNING background agents.\n` +
+            `Then decide:\n\n` +
+            `**STEER an existing agent (write_agent) WHEN ALL of these are true:**\n` +
+            `- An IDLE ${allowedList} agent exists that was working on a RELATED topic\n` +
+            `- The new message is a FOLLOW-UP (correcting, clarifying, adding to, or continuing a prior discussion)\n` +
+            `- The existing agent has CONTEXT that would be LOST by launching fresh\n` +
+            `→ Use write_agent(agent_id, message) to inject the follow-up.\n\n` +
+            `**LAUNCH a NEW agent (task tool) WHEN ANY of these are true:**\n` +
+            `- The message is a NEW topic\n` +
+            `- No relevant idle agent exists\n` +
+            `- You're unsure → LAUNCH NEW (safer)\n\n` +
+            `## STEP 1: Execute\n` +
+            `- Delegate ONLY to agent_type: "${userScope.allowed_agents[0]}"\n` +
+            `- The agent responds via telegram_send_message (chat_id: "${senderId}")\n` +
+            `- Remind the agent: Sofia is the product owner of Taller Mecánico. She can request features, review Vercel previews, and approve PR merges. When she requests changes → create branch → implement → PR → send her the Vercel preview URL via Telegram (chat_id: ${senderId}) → request her approval via merge_pr with approver_chat_id: "${senderId}".\n\n` +
+            `## STEP 2: Acknowledge & continue\n` +
+            `- Do not wait for agent results. Dispatch and continue.`,
+        };
+      }
+      // ── End scoping ──────────────────────────────────────────────────────
 
       // Smart dispatch — steer existing agents for follow-ups, launch fresh for new topics
       return {
@@ -905,7 +1506,8 @@ const session = await joinSession({
           `- For follow-ups → write_agent to the relevant idle agent\n` +
           `- For new requests → launch via task tool (pick the best custom agent_type, or general-purpose if none fits)\n` +
           `- If MULTIPLE independent new requests, launch MULTIPLE agents in parallel\n` +
-          `- Each agent responds via telegram_send_message (chat_id: "${senderId}")\n\n` +
+          `- Each agent responds via telegram_send_message (chat_id: "${senderId}")\n` +
+          `- When writing the agent prompt, remind it to CHECK and USE available skills (.github/skills/) relevant to the task. Skills contain domain-specific procedures that improve quality and consistency.\n\n` +
           `## STEP 3: Acknowledge & continue\n` +
           `- You only send a Telegram yourself for trivial acknowledgments (e.g., "goodnight", "thanks")\n` +
           `- Continue immediately after dispatching — do not wait for results.`,
@@ -1080,12 +1682,205 @@ const session = await joinSession({
         }
       },
     },
+
+    // ── merge_pr ─────────────────────────────────────────────────────────
+    {
+      name: "merge_pr",
+      description:
+        "Request a PR merge via Telegram inline keyboard approval. " +
+        "Sends the configured approver a message with the PR link, description, and ✅ Approve / ❌ Deny buttons. " +
+        "On approval, merges the PR deterministically via GitHub API. " +
+        "On denial or timeout, returns the decision without merging. " +
+        "Pre-flight: verifies PR is open/non-draft/no-conflicts AND that no CI checks " +
+        "or deployments (GitHub Actions, Vercel, etc.) are failing on the head commit. " +
+        "If any check run or commit status is in a failed/errored/cancelled state, " +
+        "the merge request is BLOCKED and no approval is sent. " +
+        "Approval rules are configured in data/pr-merge-config.json. " +
+        "htekdev/* repos always require approval. Use this instead of any direct merge operation.",
+      parameters: {
+        type: "object",
+        properties: {
+          repo: {
+            type: "string",
+            description: "GitHub repo in owner/repo format, e.g. 'htekdev/htek-dev-site'.",
+          },
+          pr_number: {
+            type: "number",
+            description: "The PR number to merge.",
+          },
+          description: {
+            type: "string",
+            description:
+              "What this PR does and why it should be merged. " +
+              "Shown to {{PARENT_1}} in the approval message. Be concise and specific.",
+          },
+          merge_method: {
+            type: "string",
+            description: "Merge strategy: 'squash' (default), 'merge', or 'rebase'.",
+          },
+          delete_branch: {
+            type: "boolean",
+            description: "Delete the head branch after merge. Default: true.",
+          },
+          author: {
+            type: "string",
+            description: "PR author login (e.g. 'dependabot[bot]'). Avoids an extra API call for rule matching.",
+          },
+          approver_chat_id: {
+            type: "string",
+            description: "Optional Telegram chat ID to route the approval request to. Use this when the originator should approve their own PR merge.",
+          },
+        },
+        required: ["repo", "pr_number"],
+      },
+      handler: async (args) => {
+        const { repo, pr_number, description, merge_method, delete_branch, author: argAuthor, approver_chat_id } = args;
+
+        if (!repo || !pr_number) {
+          return JSON.stringify({ error: "Both 'repo' and 'pr_number' are required." });
+        }
+
+        const ghToken = getGhToken();
+        if (!ghToken) {
+          return JSON.stringify({ error: "No GitHub token found. Set GITHUB_TOKEN in .env." });
+        }
+
+        const config = loadMergeConfig();
+        const mergeMethod = merge_method || config.defaults?.merge_method || "squash";
+        const doDeleteBranch = delete_branch !== false && config.defaults?.delete_branch !== false;
+        const timeoutSeconds = config.defaults?.timeout_seconds || 900;
+        const approverChatId = resolveApproverChatId(config, approver_chat_id, repo);
+        const approverLabel = describeApprover(approverChatId);
+
+        // ── Pre-check: PR must be open, not a draft, and mergeable ──────────
+        let prData;
+        try {
+          const prInfo = await ghRestMerge(`/repos/${repo}/pulls/${pr_number}`, ghToken);
+          if (!prInfo.ok) {
+            return JSON.stringify({ error: `Could not fetch PR #${pr_number} from ${repo}: ${prInfo.data?.message}` });
+          }
+          prData = prInfo.data;
+        } catch (err) {
+          return JSON.stringify({ error: `Failed to fetch PR info: ${err.message}` });
+        }
+
+        if (prData.state !== "open") {
+          return JSON.stringify({ error: `PR #${pr_number} is not open (state: ${prData.state}). Cannot merge.`, repo, pr_number });
+        }
+        if (prData.draft) {
+          return JSON.stringify({ error: `PR #${pr_number} is still a Draft. Mark it "Ready for Review" before merging.`, repo, pr_number });
+        }
+        if (prData.mergeable === false) {
+          return JSON.stringify({ error: `PR #${pr_number} has merge conflicts. Resolve conflicts before merging.`, repo, pr_number });
+        }
+
+        // ── Pre-check: CI / deployment status must not be failing ───────────
+        // Block approval if any check run or commit status is in a failed state.
+        // Vercel deployments typically appear as both check_runs AND statuses.
+        const headSha = prData.head?.sha;
+        if (headSha) {
+          const ciStatus = await checkPrCiStatus(repo, headSha, ghToken);
+          if (!ciStatus.ok) {
+            return JSON.stringify({
+              error: ciStatus.error,
+              repo,
+              pr_number,
+              head_sha: headSha,
+              failures: ciStatus.failures,
+              hint:
+                "Fix the failing CI builds or deployments (or wait for them to re-run successfully) " +
+                "before requesting merge approval. Approval was NOT sent to {{PARENT_1}}.",
+            });
+          }
+        }
+
+        // Resolve PR author (needed for rule matching)
+        let prAuthor = argAuthor || prData.user?.login || "";
+
+        const requiresApproval = checkApprovalRequired(config, repo, prAuthor);
+
+        // ── Auto-merge path ─────────────────────────────────────────────────
+        if (!requiresApproval) {
+          const result = await executePrMerge(repo, pr_number, mergeMethod, doDeleteBranch, ghToken);
+          if (result.status === "merged") {
+            const shortRepo = repo.replace("htekdev/", "");
+            await telegramApi("sendMessage", {
+              chat_id: approverChatId,
+              text:
+                `🤖 <b>Auto-merged</b> ${shortRepo}#${pr_number} (${mergeMethod})\n` +
+                `<i>${result.pr_title || ""}</i>`,
+              parse_mode: "HTML",
+            }).catch(() => {});
+          }
+          return JSON.stringify(result);
+        }
+
+        // ── Approval-required path (non-blocking) ───────────────────────────
+        // Send approval buttons and return immediately. The callback handler
+        // (handleApprovalCallback) will execute the merge when {{PARENT_1}} taps ✅.
+        // This avoids blocking the tool execution (which times out in the runtime).
+        const requestId = generateRequestId();
+        const prUrl = `https://github.com/${repo}/pull/${pr_number}`;
+        const descPart = description ? `\n\n📝 <i>${description}</i>` : "";
+
+        const msgText =
+          `🔀 <b>PR Merge Request</b>\n\n` +
+          `<b>Repo:</b> <code>${repo}</code>\n` +
+          `<b>PR:</b> <a href="${prUrl}">#${pr_number}</a>${descPart}\n\n` +
+          `<b>Approver:</b> ${approverLabel}\n\n` +
+          `Approve this merge?`;
+
+        pendingApprovals.set(requestId, {
+          mode: "direct_merge",
+          approverChatId,
+          repo,
+          prNumber: pr_number,
+          mergeMethod,
+          deleteBranch: doDeleteBranch,
+          msgText,
+          createdAt: Date.now(),
+          expiresAt: Date.now() + (timeoutSeconds * 1000),
+        });
+        const cleanupTimer = setTimeout(() => pendingApprovals.delete(requestId), timeoutSeconds * 1000);
+        if (typeof cleanupTimer.unref === "function") cleanupTimer.unref();
+
+        const keyboard = {
+          inline_keyboard: [[
+            { text: "✅ Approve", callback_data: `merge:approve:${requestId}` },
+            { text: "❌ Deny",    callback_data: `merge:deny:${requestId}` },
+          ]],
+        };
+
+        try {
+          await telegramApi("sendMessage", {
+            chat_id: approverChatId,
+            text: msgText,
+            parse_mode: "HTML",
+            reply_markup: keyboard,
+          });
+        } catch (err) {
+          return JSON.stringify({ error: `Failed to send approval request via Telegram: ${err.message}` });
+        }
+
+        // Return immediately — merge happens asynchronously via callback handler
+        return JSON.stringify({
+          status: "pending_approval",
+          message: `Approval buttons sent to ${approverLabel}. PR will be merged when they tap ✅ Approve.`,
+          approver_chat_id: approverChatId,
+          repo,
+          pr_number,
+          pr_url: prUrl,
+        });
+      },
+    },
   ],
 });
 
 // ---------------------------------------------------------------------------
 // Start polling immediately on script load
 // ---------------------------------------------------------------------------
+_sessionRef = session; // Enable queue flush
+
 if (TELEGRAM_TOKEN) {
   pollLoop(session).catch(async (err) => {
     await session.log(
@@ -1122,9 +1917,11 @@ session.on("assistant.message", async (event) => {
   return;
 });
 
-// Stop typing when session goes idle (fallback)
-session.on("session.idle", () => {
-  stopTypingIndicator();
-});
+// ---------------------------------------------------------------------------
+// Queue event listeners — DISABLED per {{PARENT_1}} (2026-05-20) — queue removed
+// Messages now always send immediately via queueOrSend(); no busy tracking needed.
+// ---------------------------------------------------------------------------
+// session.on("assistant.turn_start", () => { agentBusy = true; });
+// session.on("tool.execution_complete", () => { stopTypingIndicator(); agentBusy = false; flushOne(); });
 
 } // end BRIDGE_MODE check
