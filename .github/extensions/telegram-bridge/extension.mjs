@@ -116,7 +116,7 @@ const pendingApprovals = new Map();
 
 const {{PARENT_1}}_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_1}}";
 const {{PARENT_2}}_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_2}}";
-const SOFIA_CHAT_ID = "8947131346";
+const CAREGIVER_CHAT_ID = "{{TELEGRAM_CAREGIVER}}";
 const PR_MERGE_CONFIG_PATH = resolve(process.cwd(), "data", "pr-merge-config.json");
 const USER_SCOPES_PATH = resolve(process.cwd(), "data", "telegram-user-scopes.json");
 
@@ -195,7 +195,7 @@ function describeApprover(chatId) {
   const normalized = String(chatId || "");
   if (normalized === {{PARENT_1}}_CHAT_ID_DEFAULT) return "{{PARENT_1}}";
   if (normalized === {{PARENT_2}}_CHAT_ID_DEFAULT) return "{{PARENT_2}}";
-  if (normalized === SOFIA_CHAT_ID) return "Sofia";
+  if (normalized === CAREGIVER_CHAT_ID) return "{{CAREGIVER_NAME}}";
   return `chat ${normalized}`;
 }
 
