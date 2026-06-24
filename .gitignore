@@ -2,10 +2,45 @@ node_modules/
 .env
 data/google-tokens.json
 data/action-tracker.db
+data/tasks.db
 data/budget/budget.db
 data/shopping-lists/shopping.db
 *.db-journal
 *.db-wal
 *.db-shm
 .playwright-mcp/
-recording-aids/
+detail-ops-proposal/
+data/.tasker-tunnel-url
+.local/audit/
+data/audit/
+data/audit/**
+
+# Large media files (videos, recordings) — use cloud storage, not git
+*.mp4
+*.webm
+*.mov
+*.avi
+*.mkv
+data/recordings/
+data/content-editor-output/*.mp4
+data/content-editor-output/**/*.mp4
+
+# Nested repos (not submodules — separate clones)
+carplay-mobile-detail/
+sync-work/copilot-home-assistant/
+phone-mcp-server/
+copilot-ci-pipeline/
+copilot-hooks-starter/
+agent-mesh-service/
+
+# Playwright bridge
+data/browser-auth/
+data/browser-profiles/
+data/browser-screenshots/
+data/playwright-bridge.log
+# Git worktree directories (not submodules — separate repo clones)
+workdir/
+
+# Telegram bridge poll lock (per-machine PID file)
+data/.telegram-bridge.lock
+
