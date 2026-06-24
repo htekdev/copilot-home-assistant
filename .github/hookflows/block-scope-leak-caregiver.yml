@@ -1,0 +1,78 @@
+name: Block non-scoped messages to caregiver
+description: Prevents any agent from sending Telegram messages, merge_pr approvals, or agent_merge approvals to a designated caregiver unless the content is explicitly scoped to a specific project (e.g., taller-mecanico). Caregiver contact is scoped ONLY to that project.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [telegram_send_message, merge_pr, agent_merge]
+blocking: true
+env:
+  CHAT_ID: ${{ toJSON(event.tool.args.chat_id) }}
+  APPROVER_CHAT_ID: ${{ toJSON(event.tool.args.approver_chat_id) }}
+  MESSAGE_JSON: ${{ toJSON(event.tool.args.message) }}
+  REPO_JSON: ${{ toJSON(event.tool.args.repo) }}
+  PRS_JSON: ${{ toJSON(event.tool.args.prs) }}
+steps:
+  - name: Block caregiver scope leak
+    run: |
+      $caregiveId = '{{TELEGRAM_CAREGIVER}}'
+      $chatId = $null
+      $approverChatId = $null
+      $message = $null
+      $repo = $null
+
+      if (-not [string]::IsNullOrWhiteSpace($env:CHAT_ID)) {
+        try { $chatId = ($env:CHAT_ID | ConvertFrom-Json).ToString() } catch { $chatId = $env:CHAT_ID.Trim('"') }
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:APPROVER_CHAT_ID)) {
+        try { $approverChatId = ($env:APPROVER_CHAT_ID | ConvertFrom-Json).ToString() } catch { $approverChatId = $env:APPROVER_CHAT_ID.Trim('"') }
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:MESSAGE_JSON)) {
+        try { $message = $env:MESSAGE_JSON | ConvertFrom-Json } catch { $message = $env:MESSAGE_JSON }
+      }
+      if (-not [string]::IsNullOrWhiteSpace($env:REPO_JSON)) {
+        try { $repo = $env:REPO_JSON | ConvertFrom-Json } catch { $repo = $env:REPO_JSON }
+      }
+
+      # Also capture prs array (agent_merge)
+      $prsJson = $null
+      $prsEnv = [System.Environment]::GetEnvironmentVariable('PRS_JSON')
+      if (-not [string]::IsNullOrWhiteSpace($prsEnv)) {
+        try { $prsJson = $prsEnv | ConvertFrom-Json } catch { $prsJson = $null }
+      }
+
+      # Check if this targets caregiver
+      $targetsCaregiver = ($chatId -eq $caregiveId) -or ($approverChatId -eq $caregiveId)
+
+      if (-not $targetsCaregiver) {
+        Write-Host 'Not targeting caregiver — pass.'
+        exit 0
+      }
+
+      # If targeting caregiver, verify it's project scoped (customize PROJECT_NAME below)
+      $isProjectScoped = $false
+
+      # Check repo field (merge_pr)
+      if ($repo -and $repo -match 'taller-mecanico') {
+        $isProjectScoped = $true
+      }
+
+      # Check prs array (agent_merge) — all repos must be taller-mecanico
+      if ($prsJson -and $prsJson.Count -gt 0) {
+        $allProjectScoped = $prsJson | ForEach-Object { $_.repo -match 'taller-mecanico' } | Where-Object { $_ -eq $true }
+        if ($allProjectScoped -and $allProjectScoped.Count -eq $prsJson.Count) {
+          $isProjectScoped = $true
+        }
+      }
+
+      # Check message content for project references (customize keywords)
+      if ($message -and ($message -match 'taller.mec' -or $message -match '{{CAREGIVER_NAME}}' -or $message -match 'taller-mecanico')) {
+        $isProjectScoped = $true
+      }
+
+      if ($isProjectScoped) {
+        Write-Host 'Message to caregiver is project scoped — pass.'
+        exit 0
+      }
+
+      Write-Error "🚫 BLOCKED: Message/approval targeting caregiver ({{TELEGRAM_CAREGIVER}}) but content is NOT about the designated project.`n`nCaregiver is STRICTLY scoped to the designated project ONLY. Route this to {{PARENT_1}} instead.`n`nIf this IS about the project, include project name in the message."
+      exit 1
