@@ -2,13 +2,13 @@
  * Ask-via-Telegram Extension
  *
  * Intercepts `ask_user` tool calls and routes questions to Telegram
- * so user can answer from his phone instead of the CLI blocking.
+ * so Hector can answer from his phone instead of the CLI blocking.
  *
  * Flow:
  * 1. Agent calls ask_user → onPreToolUse fires
- * 2. Extension sends the question to primary user on Telegram
+ * 2. Extension sends the question to Hector on Telegram
  * 3. Tool call is denied with context explaining the question was forwarded
- * 4. User replies on Telegram → telegram-bridge delivers it as the next user message
+ * 4. Hector replies on Telegram → telegram-bridge delivers it as the next user message
  * 5. Agent continues with the answer
  *
  * Requires TELEGRAM_BOT_TOKEN in .env (shared with telegram-bridge).
@@ -45,8 +45,8 @@ function parseEnvFile(filePath) {
 
 parseEnvFile(ENV_FILE);
 
-// primary user's Telegram chat ID — primary recipient for ask_user questions
-const PRIMARY_CHAT_ID = process.env.PRIMARY_TELEGRAM_CHAT_ID || "YOUR_TELEGRAM_USER_ID";
+// Hector's Telegram chat ID — primary recipient for ask_user questions
+const HECTOR_CHAT_ID = "7729308746";
 
 // ---------------------------------------------------------------------------
 // Telegram API helper
@@ -110,7 +110,7 @@ const session = await joinSession({
       }
       return {
         additionalContext:
-          "[ask-via-telegram] Active — ask_user calls will be routed to primary user's Telegram. " +
+          "[ask-via-telegram] Active — ask_user calls will be routed to Hector's Telegram. " +
           "When you need to ask the user a question, call ask_user as normal. " +
           "The question will be sent to Telegram and the reply will arrive as the next user message. " +
           "Do NOT call ask_user repeatedly — wait for the Telegram reply.",
@@ -131,13 +131,13 @@ const session = await joinSession({
         ephemeral: true,
       });
 
-      const sent = await sendQuestion(PRIMARY_CHAT_ID, question);
+      const sent = await sendQuestion(HECTOR_CHAT_ID, question);
 
       if (sent) {
         return {
           permissionDecision: "deny",
           permissionDecisionReason:
-            `[ask-via-telegram] Question sent to primary user on Telegram:\n"${question}"\n\n` +
+            `[ask-via-telegram] Question sent to Hector on Telegram:\n"${question}"\n\n` +
             "His reply will arrive as the next user message via the Telegram bridge. " +
             "WAIT for it — do NOT call ask_user again or proceed without the answer. " +
             "Continue your work once you receive the reply.",

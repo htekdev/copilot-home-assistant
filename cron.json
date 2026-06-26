@@ -121,13 +121,49 @@
       "prompt": "Hourly dev check-in ΓÇö load memory tiers, pick up where you left off, implement the next item in the current phase. Run build, commit code to htekdev/carplay-mobile-detail and push. Update working memory with progress. Send brief status update to Hector via Telegram (7729308746) with speak parameter if significant progress was made. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers, status)."
     },
     {
+      "id": "taller-mecanico-checkin-hourly",
+      "schedule": "28 9,13,17 * * *",
+      "enabled": true,
+      "agent": "taller-mecanico",
+      "model": "claude-sonnet-4.6",
+      "_slot": ":28 backbone — mechanic app dev check-in",
+      "prompt": "Hourly dev check-in — load memory tiers (data/agents/taller-mecanico/core.md + working.md), check stasis_consecutive_days: if >= 5 and no new Hector input, exit silently. Otherwise: pick up where you left off, implement the next item in the current phase. Run build, commit code to htekdev/taller-mecanico and push. Update working memory with progress. Send brief status update to Hector via Telegram (7729308746) with speak parameter if significant progress was made. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers, status). Priority: cloud database migration (Phase 1)."
+    },
+    {
       "id": "servodetail-checkin-hourly",
-      "schedule": "29 * * * *",
+      "schedule": "0 9,11,13,15,17 * * *",
       "enabled": true,
       "agent": "servodetail",
       "model": "claude-sonnet-4.6",
-      "_slot": ":29 every hour — aggressive sprint dev check-in (7-day MVP, 2026-06-16 to 2026-06-23), runs 24/7 per Hector's request",
-      "prompt": "Hourly dev check-in — load core-principles.md (Tier 0), working.md, backlog.md. Check stasis_consecutive_days: if >= 5 and no new Hector input, exit silently. Otherwise: (1) Surface any net-new blockers to Hector via Telegram (7729308746, speak param) immediately. (2) Pick the next undone item from the current sprint day in data/specs/servodetail-sprint-v1.md §4. (3) Ship it — commit + push to htekdev/servodetail. (4) Telegram Hector: status (✅ shipped / 🚧 working / 🚫 blocked / ❓ need decision). (5) Update working.md + backlog.md + append events.log. At 9 AM: include full standup format (current sprint day, yesterday's progress, today's plan, active blockers). If blockers B1-B4 are unresolved, remind Hector of each with ONE-LINE action items."
+      "_slot": "9:00, 11:00, 13:00, 15:00, 17:00 CT — post-sprint dev check-in (5×/day)",
+      "prompt": "Dev check-in — load core-principles.md (Tier 0), working.md, backlog.md. Check stasis_consecutive_days: if >= 5 and no new Hector input, exit silently. Otherwise: (1) Surface any net-new blockers to Hector via Telegram (7729308746, speak param) immediately. (2) ASSET LIBRARY REVIEW — read data/servodetail/assets/README.md, pick the 1-2 highest-priority ⬜ Queued AI-generatable items (H4→H5→H6→H8→P1-P6→M1-M3), generate them using generate_image_from_image with the relevant base reference (R1/R2/R3) + style guidelines, save to the correct subfolder, update README status to ✅ Done. Flag any Client-provided items still pending as '🖼️ Client-needed: [list]' in the Telegram message. (3) Pick the next undone item from the backlog. (4) Ship it — commit + push to htekdev/servodetail. (5) Telegram Hector: status (✅ shipped / 🚧 working / 🚫 blocked / ❓ need decision) — include '🎨 Generated: [asset name]' for any assets produced and client-needed list if applicable. (6) Update working.md + backlog.md + append events.log. At 9 AM: include full standup format (yesterday's progress, today's plan, active blockers). If any blockers are unresolved, remind Hector with ONE-LINE action items."
+    },
+    {
+      "id": "servodetail-pr-reviewer",
+      "schedule": "0 12,16 * * *",
+      "enabled": true,
+      "agent": "servodetail",
+      "model": "claude-sonnet-4.6",
+      "_slot": "12:00, 16:00 CT — PR review + rebase + merge requests (2×/day)",
+      "prompt": "PR REVIEW CYCLE — Check all open PRs on htekdev/servodetail via list_pull_requests. For each PR: (1) Check if behind main using dev_get_pr_details — if so, rebase onto main via dev_rebase. (2) Verify CI is green by checking check_runs in PR details. (3) If CI passes, send merge approval to Hector (7729308746) via merge_pr with approver_chat_id='7729308746' and a brief description of what the PR does. (4) Report summary to Hector via Telegram (7729308746, speak param): list PR numbers, status (merged/pending/rebased), and any issues. Stay silent if no open PRs."
+    },
+    {
+      "id": "surgiquip-asset-review-daily",
+      "schedule": "30 10 * * *",
+      "enabled": true,
+      "agent": "surgiquip",
+      "model": "claude-sonnet-4.6",
+      "_slot": "10:30 CT — daily Surgiquip asset generation cycle",
+      "prompt": "ASSET LIBRARY REVIEW CYCLE — read data/surgiquip/assets/README.md. Scan for 🔴 Pending items whose source is AI-generated (not Client-provided). Pick the 1-2 highest-priority items (Priority 1 → Priority 2 → Priority 3 → Priority 5). Generate each using generate_image_from_image with: (a) the relevant base reference from data/surgiquip/assets/base-references/ (style-or-suite.png for OR environment shots, style-product-shot.png for equipment close-ups, style-service-tech.png for service/technician shots), and (b) the style guidelines in the README (clean clinical premium, navy #0a2c5e accents, no identifiable faces, 4K resolution). Save generated images to the correct subfolder in data/surgiquip/assets/ (homepage/, product-pages/, service-pages/, about-pages/). Update README status from 🔴 Pending to ✅ Done. ALWAYS compile the full list of 🔴 Blocked client-provided items (Skytron/HSI/Knight/BBB logos, Surgiquip logo, team photos, facility exterior, installation photos) and send to Hector via Telegram (7729308746, speak param): include '🎨 Generated: [asset name]' for any assets produced + '🏥 Still need from Carla: [blocked list]'. If all AI-generatable items are already ✅ Done, just report the client-blocked list and stay silent if Hector has already been notified this week. Update working.md with asset progress and append events.log."
+    },
+    {
+      "id": "surgiquip-website-dev-hourly",
+      "schedule": "0 9-17 * * *",
+      "enabled": true,
+      "agent": "surgiquip",
+      "model": "claude-sonnet-4.6",
+      "_slot": "9:00–17:00 CT hourly — website development cycles (FULL GO as of 2026-06-24)",
+      "prompt": "SURGIQUIP WEBSITE DEVELOPMENT CYCLE — Client confirmed FULL GO with deposit paid. Priorities: quality, completeness, correctness, media/assets, production readiness. Load memory tiers: data/agents/surgiquip/core.md (Tier 1) + working.md (Tier 2). Work on htekdev/surgiquip repo — pick the next backlog item from data/specs/surgiquip-website-v1.md (Phase 1 sections: Header/Footer/Hero → StatBar/Services/Partners → Product Pages → Service Pages → About/Timeline → Forms/CTA → SEO/Schema → Optimization). Implement the item: write clean, complete code (Astro + Tailwind v4), follow CarPlay conventions, include asset generation where relevant (use Higgsfield or generate_image_from_image for missing media). Before shipping: (1) Run build + test locally (npm run build). (2) Create a feature branch (start_dev_branch), commit changes (dev_add + dev_commit), push (dev_push) with Vercel preview. (3) Send Hector status via Telegram (7729308746, speak param): include item name, status (✅ shipped / 🚧 in progress / 🚫 blocked), preview URL if merged, and any decisions/blockers. Use speak param only for real progress — no noise. At 9 AM (hour 9): include full standup format (yesterday's progress, today's plan, blockers, preview URL, estimated completion). (4) Update working.md with progress, note any blockers, append to events.log. Check for stalled work (same item > 3 hours) — if stuck, flag to Hector immediately. Focus: every cycle must ship something or clearly communicate why it's blocked."
     },
     {
       "id": "ai-harness-checkin-hourly",
@@ -416,7 +452,7 @@
       "enabled": true,
       "agent": "wellness-coach",
       "_slot": "8:03 ΓÇö after weekend-briefing :00 (weekends) or start of hour",
-      "prompt": "Morning wellness check-in. Load your memory tiers. Compute current CT time. Check Hector's observations from last night. Review any BP readings, sleep data, or anxiety indicators. If concerning patterns, create a task for Hector with specific guidance. Update working memory with morning assessment. Do NOT contact Paula directly ΓÇö work through Hector and Luna."
+      "prompt": "Morning wellness check-in. Load your memory tiers. Compute current CT time. Check Hector's observations from last night. Review any BP readings, sleep data, or anxiety indicators. If concerning patterns, create a task for Hector with specific guidance. Update working memory with morning assessment. Do NOT contact Paula directly ΓÇö work through Hector and Luna. Q-026 GUARD: If add_task/telegram_send_message tools are unavailable, do NOT silently exit ΓÇö append findings as a JSON entry to data/wellness/pending-cron-output.json (create if missing) with timestamp, cron_id, and intended_action so the next successful cycle can reconcile."
     },
     {
       "id": "wellness-coach-midday",
@@ -424,7 +460,7 @@
       "enabled": true,
       "agent": "wellness-coach",
       "_slot": "13:10 ΓÇö after nicu :06, before linkedin :18",
-      "prompt": "Midday wellness check-in. Load memory. Review any new data since morning (pump sessions as stress indicator, NICU updates, task completions). If Hector or Paula reported anxiety/stress, prepare a grounding technique suggestion as a task for Hector to relay. Brief check ΓÇö skip if no new data. Update working memory."
+      "prompt": "Midday wellness check-in. Load memory. Review any new data since morning (pump sessions as stress indicator, NICU updates, task completions). If Hector or Paula reported anxiety/stress, prepare a grounding technique suggestion as a task for Hector to relay. Brief check ΓÇö skip if no new data. Update working memory. Q-026 GUARD: If add_task/telegram_send_message tools are unavailable, append findings to data/wellness/pending-cron-output.json with timestamp + cron_id + intended_action; also reconcile any prior entries in that file if tools are now available."
     },
     {
       "id": "wellness-coach-evening",
@@ -432,7 +468,7 @@
       "enabled": true,
       "agent": "wellness-coach",
       "_slot": "18:00 ΓÇö no heartbeat at 18, first in the hour",
-      "prompt": "Evening wellness wrap-up. Load memory. Summarize today's wellness indicators (BP, anxiety, sleep quality from last night, medication adherence). Log daily summary to long-term memory. If any concerns emerged today, create a consolidated task for Hector with specific next steps. Prepare any bedtime relaxation suggestions. Update working memory with end-of-day assessment."
+      "prompt": "Evening wellness wrap-up. Load memory. Summarize today's wellness indicators (BP, anxiety, sleep quality from last night, medication adherence). Log daily summary to long-term memory. If any concerns emerged today, create a consolidated task for Hector with specific next steps. Prepare any bedtime relaxation suggestions. Update working memory with end-of-day assessment. Q-026 GUARD: If add_task/telegram_send_message tools are unavailable, append findings to data/wellness/pending-cron-output.json with timestamp + cron_id + intended_action; also reconcile any prior entries in that file if tools are now available."
     },
     {
       "id": "context-audit-weekly",
@@ -597,7 +633,7 @@
       "agent": "data-optimizer",
       "model": "claude-haiku-4.5",
       "_slot": "7:40 ΓÇö after illustrator :33",
-      "prompt": "Daily maintenance scan. EARLY-EXIT: Query session_store_sql for edit/create tool calls on data/*.json in last 24h ΓÇö if zero results, respond 'No data file edits ΓÇö nothing to audit' and stop immediately. OTHERWISE: Identify raw-edit patterns on JSON data files from the last 24 hours. Load memory tiers (core.md + working.md). Use session_store_sql to find recent edit/create tool calls on data/*.json files (24h lookback). Cross-reference with file sizes and multi-agent write patterns. For each candidate found: check if already governed (data/protected-files.json), check if an extension already handles it, assess governance criteria (size, frequency, multi-agent, schema needs). Verify existing governed files are healthy (no raw-edit violations). Update working.md with findings. If a strong candidate is found (meets 2+ criteria), write a migration spec to data/specs/. Send brief findings to Hector via Telegram (7729308746, speak param) only if actionable candidates found."
+      "prompt": "Daily maintenance scan. Load memory tiers (core.md + working.md). EARLY-EXIT CHECK: Query session_store_sql for edit/create tool calls on data/*.json in last 24h — if zero results, update the 'Last Run' section in working.md with today's date and 'Early-exit: no data file edits', then stop. OTHERWISE: Identify raw-edit patterns on JSON data files from the last 24 hours. Use session_store_sql to find recent edit/create tool calls on data/*.json files (24h lookback). Cross-reference with file sizes and multi-agent write patterns. For each candidate found: check if already governed (data/protected-files.json), check if an extension already handles it, assess governance criteria (size, frequency, multi-agent, schema needs). Verify existing governed files are healthy (no raw-edit violations). Update working.md with findings. If a strong candidate is found (meets 2+ criteria), write a migration spec to data/specs/. Send brief findings to Hector via Telegram (7729308746, speak param) only if actionable candidates found."
     },
     {
       "id": "sms-outreach",
@@ -702,7 +738,7 @@
       "schedule": "15 9 * * 1-5",
       "enabled": true,
       "agent": "project-manager",
-      "model": "claude-haiku-4.5",
+      "model": "claude-sonnet-4.6",
       "_slot": "9:15 weekdays — client project check-in (added Jun 18 nightly: agent existed without cron)",
       "prompt": "Daily client project check-in. Load memory tiers (core.md + working.md). Compute current CT time. Scan active client projects — sprint progress, deliverables due, invoice status, blockers. ServoDetail sprint is active (Jun 16–23): check sprint day progress and surface any unresolved blockers. Surface any client actions needed via Telegram (7729308746, speak param) if urgent. Update working.md with project status. Stay silent if all projects are on track."
     },
@@ -722,7 +758,70 @@
       "agent": "teacher",
       "model": "claude-haiku-4.5",
       "_slot": "10:30 weekdays — HJ education check-in (added Jun 18 nightly: agent existed without cron)",
-      "prompt": "Daily education check-in. Load memory tiers (core.md + working.md). Compute current CT time. Review Hector Jr's lesson plan, curriculum progress, session log, and upcoming milestones. Note any materials needed or sessions overdue. Send a brief reminder to Hector via Telegram (7729308796, speak param) ONLY if a session is due today or a milestone is approaching. Update working.md. Stay silent if no action needed."
+      "prompt": "Daily education check-in. Load memory tiers (core.md + working.md). Compute current CT time. Review Hector Jr's lesson plan, curriculum progress, session log, and upcoming milestones. Note any materials needed or sessions overdue. Send a brief reminder to Hector via Telegram (7729308746, speak param) ONLY if a session is due today or a milestone is approaching. Update working.md. Stay silent if no action needed."
+    },
+    {
+      "id": "harness-manager-weekly",
+      "schedule": "40 9 * * 1",
+      "enabled": true,
+      "agent": "harness-manager",
+      "model": "claude-sonnet-4.6",
+      "_slot": "9:40 Monday — weekly harness governance audit (added Jun 19 nightly: agent existed without cron)",
+      "prompt": "Weekly harness governance audit. Load memory tiers (core.md + working.md). Compute current CT time via PowerShell. PHASE 1 — HOOKFLOW AUDIT: Scan .github/hookflows/ — verify registry count matches files on disk, check for stale rules referencing deleted agents or tools, flag any hookflow without a corresponding standing order or test case. PHASE 2 — EXTENSION AUDIT: Check .github/extensions/ — verify all extension IDs are registered in agency.toml, flag any extension with TODO/stub code. PHASE 3 — SKILL AUDIT: Spot-check 3 recently-modified skills for accuracy vs actual runtime behavior. PHASE 4 — CONTRADICTIONS: Check if any agent instructions contradict their governing hookflows. PHASE 5 — FIX: Auto-fix any low-risk issues found (stale refs, registry gaps, description typos). Create tasks for issues requiring Hector input. PHASE 6 — REPORT: Send brief Telegram (7729308746, speak param) with audit summary: hookflows audited, issues found/fixed, issues flagged. Update working.md with audit results."
+    },
+    {
+      "id": "servodetail-outreach-daily",
+      "schedule": "45 10 * * 1-5",
+      "enabled": true,
+      "agent": "servodetail",
+      "model": "claude-sonnet-4.6",
+      "_slot": "10:45 weekdays — Servo Detail daily outreach campaign execution (added 2026-06-26)",
+      "prompt": "OUTREACH CAMPAIGN CYCLE — Daily beta prospect outreach for Servo Detail. Load data/agents/servodetail/gtm/prospect-list.md and data/agents/servodetail/gtm/direct-outreach-campaign.md. STEP 1 — FOLLOW-UP CHECK: Scan prospect-list.md for any prospects in active cadence (📤 Emailed, 📱 Texted) and compute how many days since last contact. If Day 5 email follow-up or Day 7 IG DM or Day 10 call is due today, create a task for Hector with the exact follow-up copy pre-written. STEP 2 — NEW PROSPECTS: Select 3-5 prospects with status '🔵 Queued' using the priority order in prospect-list.md (H2 Bouley first, then D1 Aura, then A1 Brightside, etc.). For each, draft a personalized outreach message using the templates in direct-outreach-campaign.md — personalize the compliment line based on what you know about their business (type, services, location). STEP 3 — TASK CREATION: Create one task per prospect in Hector's queue (surface='human') with: title='Outreach: [Business Name]', body='[drafted message + recommended channel (email/SMS/call/IG DM) + why this prospect]'. STEP 4 — RESEARCH GAP FILL: If any prospects in the Research Backlog section of prospect-list.md are still missing info (email, IG handle), use exa-web_search_advanced_exa to look them up and update prospect-list.md. STEP 5 — METRICS UPDATE: Update the Campaign Metrics table in prospect-list.md with current counts. STEP 6 — TELEGRAM: Send Hector (7729308746, speak param) a brief outreach brief: '📊 Outreach: [N] new drafts queued for your review | [N] follow-ups due | Prospects: [current]/50'. Skip Telegram if all metrics show 0 activity and no follow-ups are due. Update working.md and events.log with cycle notes."
+    },
+    {
+      "id": "servodetail-app-dev-hourly",
+      "schedule": "20 8,10,12,14,16,18 * * *",
+      "enabled": true,
+      "agent": "servodetail",
+      "model": "claude-sonnet-4.6",
+      "_slot": "6x daily (8:20, 10:20, 12:20, 14:20, 16:20, 18:20 CT) — APP FUNCTIONALITY ONLY developer (added 2026-06-25). Runs alongside i18n/PR crons. NO i18n, NO GTM, NO localization.",
+      "prompt": "APP FUNCTIONALITY DEVELOPER — 18 days to go-live (July 13, 2026). YOUR SOLE FOCUS: ship app features. NOT i18n, NOT GTM, NOT localization, NOT outreach. Load memory: core-principles.md + working.md + backlog.md (Section APP + Section A only). Check stasis_consecutive_days in working.md — if >= 3 and no new input directed at app functionality, increment and exit silently. Otherwise reset to 0. PRIORITY ORDER for this cycle: (1) Check if PR #78 (feat/app-scheduling-customers-calendar) has been merged. If not merged, skip and plan next feature. (2) Next unbuilt MVP features by priority: A. Service Catalog CRUD UI with vehicle-tier modifiers (A4.2-A4.3) — full edit/delete on /dashboard/services, vehicle tier pricing rows. B. Customer detail page + vehicle add form (/dashboard/customers/[id]) — show booking history, vehicle list, add vehicle. C. Invoice generation (A7.1-A7.2) — after booking is completed, generate a basic invoice (line items + total). D. Booking confirmation email (A6.6) — SES or Resend when booking status changes to 'confirmed'. E. Chat CRUD for bookings (A8.1) — voice/chat can book: 'Book Jane Tuesday 2pm for ceramic coating'. Pick the NEXT undone item from this list. Build it. Create a branch with start_dev_branch, implement, commit with dev_commit, push with dev_push, create PR with create_vercel_pr. After creating the PR, send merge_pr to Hector (approver_chat_id: '7729308746'). Telegram Hector (7729308746, speak param): '🔨 App Dev: [feature] — PR #{number} | Preview: {url}'. Update working.md + backlog.md + events.log. RULES: All new code must use withTenant(ctx) guard. No cross-tenant data leaks. Every PR needs a Testing Evidence section. Supabase auth (not AWS Cognito) for now — ship fast."
+    },
+    {
+      "id": "servodetail-gtm-content",
+      "schedule": "32 8,11,14,17 * * *",
+      "enabled": true,
+      "agent": "servodetail-gtm",
+      "model": "claude-sonnet-4.6",
+      "_slot": "4x daily (8:32 AM, 11:32 AM, 2:32 PM, 5:32 PM CT) — Servo Detail social media content generation (added 2026-06-24)",
+      "prompt": "Social media content cycle. Load memory tiers (core.md + working.md). Check the 30-day content calendar in data/agents/servodetail/gtm/social-media-campaign.md — identify what should post TODAY based on the day/platform rotation. For each post due: (1) Generate brand-aligned media using generate_image_from_image with data/servodetail/design/style-kit-comprehensive.png as the style reference — NEVER use plain generate_image. (2) Write post copy following brand voice (professional but warm, founder-led, NOT corporate robot, NOT bro-slang) and the content pillar template. (3) Validate any URLs in the post return HTTP 200 before scheduling. (4) Schedule via late_create_post to the appropriate account(s) at the optimal posting window (IG: 11AM/5PM, LinkedIn: 8AM/12PM, X: 9AM/1PM/6PM, FB: 10AM/3PM — all CT; use Z suffix but do NOT convert to UTC). Track what was created/scheduled in working.md. If today's calendar slot is already covered, look ahead and pre-generate tomorrow's content. Send Hector a brief Telegram (7729308746, speak param) summary of what was created and scheduled. Stay silent if nothing actionable."
+    },
+    {
+      "id": "servosita-dev-checkin",
+      "schedule": "5 9,12,15,18 * * *",
+      "enabled": true,
+      "agent": "servosita",
+      "model": "claude-sonnet-4.6",
+      "_slot": "9:05, 12:05, 15:05, 18:05 CT — Servosita dev check-in (4×/day)",
+      "prompt": "Dev check-in — load memory (core.md + working.md). Check stasis_consecutive_days: if >= 5 and no new Hector input, exit silently. Otherwise: (1) Surface any net-new blockers to Hector via Telegram (7729308746, speak param) immediately. (2) Pick the next undone item from the current phase. (3) Ship it — commit + push to htekdev/servosita via branch+PR workflow. (4) Telegram Hector: status (✅ shipped / 🚧 working / 🚫 blocked / ❓ need decision). (5) Update working.md + append events.log. At 9 AM: include full standup format (phase, yesterday's progress, today's plan, blockers). Stay silent if stasis."
+    },
+    {
+      "id": "servosita-gtm-content",
+      "schedule": "37 9,12,15 * * *",
+      "enabled": true,
+      "agent": "servosita",
+      "model": "claude-sonnet-4.6",
+      "_slot": "9:37, 12:37, 15:37 CT — Servosita social media content (3×/day)",
+      "prompt": "Social media content cycle for Servosita. Load memory (core.md + working.md). Check the 30-day content calendar in data/agents/servosita/gtm/social-media-campaign.md — identify what should post TODAY based on the day/platform rotation. For each post due: (1) Generate brand-aligned media using generate_image_from_image with data/servosita/design/marketing-hero.png as the style reference — warm rose gold palette, salon imagery, NEVER dark/navy. (2) Write post copy in Mexican Spanish following brand voice (warm, empowering, mentor-like). (3) Schedule via late_create_post to the appropriate Servosita accounts at optimal posting windows (IG: 11AM/5PM CT, FB: 10AM/3PM CT). Track in working.md. Send Hector a brief Telegram (7729308746, speak param) summary. Stay silent if nothing actionable."
+    },
+    {
+      "id": "servosita-outreach-daily",
+      "schedule": "20 10 * * 1-5",
+      "enabled": true,
+      "agent": "servosita",
+      "model": "claude-sonnet-4.6",
+      "_slot": "10:20 CT weekdays — Servosita salon outreach (1×/day)",
+      "prompt": "OUTREACH CAMPAIGN CYCLE — Daily salon prospect outreach for Servosita (Mexican market). Load data/agents/servosita/gtm/prospect-list.md and data/agents/servosita/gtm/direct-outreach-campaign.md. STEP 1 — FOLLOW-UP CHECK: Scan prospect-list.md for active prospects and compute days since last contact. If follow-up is due, create a task for Hector with pre-written message. STEP 2 — PROSPECT RESEARCH: If prospect list has <20 entries, research new salons via web search (Instagram hashtags #SalonCDMX, #EstilistaMexico, Google Maps). Add to prospect-list.md with full details. STEP 3 — NEW OUTREACH: Select 3-5 queued prospects, draft personalized WhatsApp/IG DM messages using templates from direct-outreach-campaign.md. Create tasks for Hector (surface='human') with drafted messages. STEP 4 — METRICS: Update campaign metrics table. STEP 5 — TELEGRAM: Send Hector (7729308746, speak param) brief: '💅 Outreach: [N] new drafts | [N] follow-ups due | Prospects: [current]/30'. Skip if all zeros. Update working.md + events.log."
     }
   ]
 }

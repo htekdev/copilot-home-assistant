@@ -53,6 +53,47 @@ function getApiKey() {
   return process.env.LATE_API_KEY || loadEnv().LATE_API_KEY || "";
 }
 
+function truncateContent(content, max = 150) {
+  const text = typeof content === "string" ? content : "";
+  return text.slice(0, max) + (text.length > max ? "…" : "");
+}
+
+function parseCursorOffset(cursor) {
+  const value = Number.parseInt(cursor || "0", 10);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function sortCommentRows(rows, sortBy, sortOrder) {
+  const direction = String(sortOrder || "desc").toLowerCase() === "asc" ? 1 : -1;
+  const key = sortBy || "publishedAt";
+
+  return [...rows].sort((a, b) => {
+    if (key === "commentCount") {
+      return ((a.commentCount || 0) - (b.commentCount || 0)) * direction;
+    }
+
+    const aTime = Date.parse(a.publishedAt || "") || 0;
+    const bTime = Date.parse(b.publishedAt || "") || 0;
+    return (aTime - bTime) * direction;
+  });
+}
+
+async function mapWithConcurrency(items, concurrency, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+
+  async function runWorker() {
+    while (nextIndex < items.length) {
+      const currentIndex = nextIndex++;
+      results[currentIndex] = await worker(items[currentIndex], currentIndex);
+    }
+  }
+
+  const workerCount = Math.min(Math.max(concurrency, 1), items.length || 1);
+  await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+  return results;
+}
+
 // ---------------------------------------------------------------------------
 // HTTP helper with retry + rate-limit handling
 // ---------------------------------------------------------------------------
@@ -398,7 +439,7 @@ async function handleCreatePost(params) {
 }
 
 async function handleUpdatePost(params) {
-  const { post_id, content, title, scheduled_for, tags, hashtags, timezone } = params;
+  const { post_id, content, title, scheduled_for, tags, hashtags, timezone, is_draft } = params;
   const body = {};
   if (content !== undefined) body.content = content;
   if (title !== undefined) body.title = title;
@@ -406,6 +447,7 @@ async function handleUpdatePost(params) {
   if (timezone !== undefined) body.timezone = timezone;
   if (tags !== undefined) body.tags = JSON.parse(tags);
   if (hashtags !== undefined) body.hashtags = JSON.parse(hashtags);
+  if (is_draft !== undefined) body.isDraft = is_draft;
 
   const res = await lateRequest(`/posts/${post_id}`, {
     method: "PUT",
@@ -415,7 +457,7 @@ async function handleUpdatePost(params) {
   if (res.error) return res;
 
   return {
-    message: "Post updated",
+    message: is_draft === false ? "Post scheduled (draft → scheduled)" : "Post updated",
     post: formatPostSummary(res.post || res),
   };
 }
@@ -538,6 +580,277 @@ async function handlePresignUpload(params) {
     key: res.key,
     type: res.type,
     note: "Upload file to uploadUrl via PUT, then use publicUrl in mediaItems when creating a post.",
+  };
+}
+
+// ── Comment / Inbox Management ──
+
+async function handleListComments(params) {
+  const { platform, status, limit, profile_id, account_id, since, sort_by, sort_order, min_comments, cursor } = params;
+
+  if (String(platform || "").toLowerCase() === "youtube") {
+    const postsData = await fetchAllPages("/posts", { platform: "youtube", status: "published" }, 20);
+    if (postsData.error) return postsData;
+
+    const sinceTs = since ? Date.parse(since) : NaN;
+    const publishedPosts = (postsData.items || []).filter((post) => {
+      const youtubePlatform = (post.platforms || []).find((entry) => entry.platform === "youtube");
+      if (!youtubePlatform) return false;
+
+      const youtubeAccountId = typeof youtubePlatform.accountId === "string"
+        ? youtubePlatform.accountId
+        : youtubePlatform.accountId?._id;
+      if (account_id && youtubeAccountId !== account_id) return false;
+      if (profile_id && youtubePlatform.profileId !== profile_id) return false;
+      return true;
+    });
+
+    const enriched = await mapWithConcurrency(publishedPosts, 8, async (post) => {
+      const youtubePlatform = (post.platforms || []).find((entry) => entry.platform === "youtube");
+      const youtubeAccountId = typeof youtubePlatform.accountId === "string"
+        ? youtubePlatform.accountId
+        : youtubePlatform.accountId?._id;
+      const platformPostId = youtubePlatform.platformPostId || post.platformPostId || post._id;
+      if (!youtubeAccountId || !platformPostId) return null;
+
+      const qs = new URLSearchParams({ accountId: youtubeAccountId, limit: "100" });
+      const commentData = await lateRequest(`/inbox/comments/${platformPostId}?${qs}`);
+      if (commentData.error) return null;
+
+      const comments = commentData.comments || commentData.data || [];
+      const filteredComments = Number.isNaN(sinceTs)
+        ? comments
+        : comments.filter((comment) => {
+            const createdAt = comment.createdTime || comment.createdAt || comment.timestamp;
+            const createdTs = Date.parse(createdAt || "");
+            return !Number.isNaN(createdTs) && createdTs >= sinceTs;
+          });
+
+      const actualCommentCount = filteredComments.length;
+      const minimumComments = min_comments || 1;
+      if (actualCommentCount < minimumComments) return null;
+
+      return {
+        postId: platformPostId,
+        content: truncateContent(post.content),
+        platform: "youtube",
+        accountId: youtubeAccountId,
+        commentCount: actualCommentCount,
+        publishedAt: youtubePlatform.publishedAt || post.publishedAt,
+        publishedUrl: youtubePlatform.platformPostUrl,
+      };
+    });
+
+    const offset = parseCursorOffset(cursor);
+    const sortedPosts = sortCommentRows(enriched.filter(Boolean), sort_by, sort_order);
+    const pageSize = limit || 25;
+    const pagePosts = sortedPosts.slice(offset, offset + pageSize);
+    const nextCursor = offset + pagePosts.length < sortedPosts.length
+      ? String(offset + pagePosts.length)
+      : undefined;
+
+    return {
+      posts: pagePosts,
+      cursor: nextCursor,
+      total: sortedPosts.length,
+      source: "youtube-direct-comment-scan",
+    };
+  }
+
+  const qs = new URLSearchParams();
+  if (platform) qs.set("platform", platform);
+  if (status) qs.set("status", status);
+  if (profile_id) qs.set("profileId", profile_id);
+  if (account_id) qs.set("accountId", account_id);
+  if (since) qs.set("since", since);
+  if (sort_by) qs.set("sortBy", sort_by);
+  if (sort_order) qs.set("sortOrder", sort_order);
+  if (min_comments) qs.set("minComments", String(min_comments));
+  if (limit) qs.set("limit", String(limit));
+  if (cursor) qs.set("cursor", cursor);
+
+  const data = await lateRequest(`/inbox/comments?${qs}`);
+  if (data.error) return data;
+
+  return {
+    posts: (data.posts || data.data || []).map((p) => ({
+      postId: p._id || p.postId,
+      content: truncateContent(p.content),
+      platform: p.platform,
+      accountId: p.accountId,
+      commentCount: p.commentCount || p.comments?.length || 0,
+      publishedAt: p.publishedAt,
+      publishedUrl: p.publishedUrl,
+    })),
+    cursor: data.cursor || data.nextCursor,
+    total: data.total || (data.posts || data.data || []).length,
+  };
+}
+
+async function handleGetPostComments(params) {
+  const { post_id, account_id, limit, cursor, comment_id } = params;
+  const qs = new URLSearchParams();
+  if (account_id) qs.set("accountId", account_id);
+  if (limit) qs.set("limit", String(limit));
+  if (cursor) qs.set("cursor", cursor);
+  if (comment_id) qs.set("commentId", comment_id);
+
+  const data = await lateRequest(`/inbox/comments/${post_id}?${qs}`);
+  if (data.error) return data;
+
+  return {
+    comments: (data.comments || data.data || []).map((c) => ({
+      id: c._id || c.id || c.commentId,
+      author: c.author || c.from || c.user,
+      text: c.text || c.message || c.content,
+      createdAt: c.createdAt || c.timestamp,
+      likeCount: c.likeCount || c.likes || 0,
+      replyCount: c.replyCount || c.replies?.length || 0,
+      platform: c.platform,
+      isHidden: c.isHidden || false,
+    })),
+    cursor: data.cursor || data.nextCursor,
+    total: data.total || (data.comments || data.data || []).length,
+  };
+}
+
+// ── URL Validation Quality Gate for Comment Replies ─────────────────────────
+// MANDATORY: All URLs in comment replies must be validated before posting.
+// Created after a broken link was posted in a comment reply (brand credibility).
+// This gate is built INTO the tool so it cannot be bypassed by any agent.
+
+const URL_REGEX = /https?:\/\/[^\s"'<>\])\},]+/gi;
+
+/**
+ * Validate all URLs in a message. Returns { valid: true } or { valid: false, failures: [...] }.
+ */
+async function validateCommentURLs(text) {
+  const urls = text.match(URL_REGEX);
+  if (!urls || urls.length === 0) return { valid: true, urls: [] };
+
+  const unique = [...new Set(urls)];
+  const failures = [];
+
+  for (const url of unique) {
+    try {
+      // Clean trailing punctuation that may have been captured
+      const cleanUrl = url.replace(/[.,;:!?)]+$/, "");
+      const resp = await fetch(cleanUrl, {
+        method: "HEAD",
+        redirect: "follow",
+        signal: AbortSignal.timeout(8000),
+        headers: { "User-Agent": "htekdev-comment-quality-gate/1.0" },
+      });
+      // Accept 2xx and 3xx (redirects followed), reject 4xx/5xx
+      if (resp.status >= 400) {
+        // Retry with GET in case HEAD is not supported
+        const retryResp = await fetch(cleanUrl, {
+          method: "GET",
+          redirect: "follow",
+          signal: AbortSignal.timeout(8000),
+          headers: { "User-Agent": "htekdev-comment-quality-gate/1.0" },
+        });
+        if (retryResp.status >= 400) {
+          failures.push({ url: cleanUrl, status: retryResp.status });
+        }
+      }
+    } catch (err) {
+      failures.push({ url: url.replace(/[.,;:!?)]+$/, ""), error: err.message || "Network error" });
+    }
+  }
+
+  return { valid: failures.length === 0, urls: unique, failures };
+}
+
+async function handleReplyComment(params) {
+  const { post_id, account_id, message, comment_id } = params;
+
+  // ── QUALITY GATE: Validate all URLs before posting ──
+  const urlCheck = await validateCommentURLs(message);
+  if (!urlCheck.valid) {
+    const failReport = urlCheck.failures
+      .map((f) => `  • ${f.url} → ${f.status ? `HTTP ${f.status}` : f.error}`)
+      .join("\n");
+    return {
+      error: "QUALITY GATE BLOCKED: Comment contains broken URLs",
+      message:
+        "🚫 Reply NOT posted. The following URLs failed validation:\n" +
+        failReport +
+        "\n\nFix or remove the broken URLs, then retry. All URLs must return HTTP 200 before a comment can be posted.",
+      failed_urls: urlCheck.failures,
+      original_message: message,
+    };
+  }
+
+  const body = { accountId: account_id, message };
+  if (comment_id) body.commentId = comment_id;
+
+  const res = await lateRequest(`/inbox/comments/${post_id}`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+
+  if (res.error) return res;
+
+  return {
+    message: "Reply posted successfully",
+    postId: post_id,
+    replyTo: comment_id || "(top-level)",
+    reply: res.comment || res.data || res,
+    urls_validated: urlCheck.urls.length,
+  };
+}
+
+async function handleHideComment(params) {
+  const { post_id, comment_id, account_id } = params;
+
+  const res = await lateRequest(`/inbox/comments/${post_id}/${comment_id}/hide`, {
+    method: "POST",
+    body: JSON.stringify({ accountId: account_id }),
+  });
+
+  if (res.error) return res;
+
+  return {
+    message: "Comment hidden successfully",
+    postId: post_id,
+    commentId: comment_id,
+  };
+}
+
+async function handleDeleteComment(params) {
+  const { post_id, comment_id, account_id } = params;
+  const qs = new URLSearchParams();
+  qs.set("accountId", account_id);
+  qs.set("commentId", comment_id);
+
+  const res = await lateRequest(`/inbox/comments/${post_id}?${qs}`, {
+    method: "DELETE",
+  });
+
+  if (res.error) return res;
+
+  return {
+    message: "Comment deleted successfully",
+    postId: post_id,
+    commentId: comment_id,
+  };
+}
+
+async function handleLikeComment(params) {
+  const { post_id, comment_id, account_id } = params;
+
+  const res = await lateRequest(`/inbox/comments/${post_id}/${comment_id}/like`, {
+    method: "POST",
+    body: JSON.stringify({ accountId: account_id }),
+  });
+
+  if (res.error) return res;
+
+  return {
+    message: "Comment liked successfully",
+    postId: post_id,
+    commentId: comment_id,
   };
 }
 
@@ -708,7 +1021,8 @@ const TOOLS = [
   },
   {
     name: "late_update_post",
-    description: "Update a draft or scheduled post's content, title, schedule, tags, or hashtags.",
+    description:
+      "Update a draft or scheduled post's content, title, schedule, tags, hashtags, or draft status. To transition a draft post to scheduled, set is_draft=false AND provide scheduled_for.",
     parameters: {
       type: "object",
       properties: {
@@ -719,6 +1033,11 @@ const TOOLS = [
         timezone: { type: "string", description: "Timezone for the new schedule" },
         tags: { type: "string", description: "JSON array of new tags" },
         hashtags: { type: "string", description: "JSON array of new hashtags" },
+        is_draft: {
+          type: "boolean",
+          description:
+            "Set to false to transition a draft post to scheduled (MUST also provide scheduled_for). Set to true to move a scheduled post back to draft.",
+        },
       },
       required: ["post_id"],
     },
@@ -889,6 +1208,118 @@ const TOOLS = [
     },
     handler: async (p) => JSON.stringify(await handleNextSlot(p), null, 2),
   },
+
+  // ── Comment / Inbox Management ──
+  {
+    name: "late_list_comments",
+    description:
+      "List posts with comments from the Late/Zernio inbox. Shows commented posts across all " +
+      "connected accounts with comment counts. For YouTube, uses a direct per-video scan because the inbox feed misses older commented videos. Filter by platform, profile, or account.",
+    parameters: {
+      type: "object",
+      properties: {
+        platform: { type: "string", description: "Filter by platform (twitter, instagram, youtube, etc.)" },
+        profile_id: { type: "string", description: "Filter by profile ID" },
+        account_id: { type: "string", description: "Filter by specific social account ID" },
+        since: { type: "string", description: "Only posts with comments since this ISO 8601 date" },
+        min_comments: { type: "number", description: "Minimum comment count to include" },
+        sort_by: { type: "string", description: "Sort field (e.g. 'commentCount', 'publishedAt')" },
+        sort_order: { type: "string", description: "Sort order: 'asc' or 'desc'" },
+        limit: { type: "number", description: "Max results (default: 25)" },
+        cursor: { type: "string", description: "Pagination cursor from previous response" },
+      },
+      required: [],
+    },
+    handler: async (p) => JSON.stringify(await handleListComments(p), null, 2),
+  },
+  {
+    name: "late_get_post_comments",
+    description:
+      "Get comments for a specific post. Requires account_id to identify which social account " +
+      "to fetch comments from. Returns comment text, author, likes, and reply counts.",
+    parameters: {
+      type: "object",
+      properties: {
+        post_id: { type: "string", description: "Zernio post ID or platform-specific post ID" },
+        account_id: { type: "string", description: "Social account ID (required — use late_list_accounts to find)" },
+        limit: { type: "number", description: "Max comments to return" },
+        cursor: { type: "string", description: "Pagination cursor from previous response" },
+        comment_id: { type: "string", description: "(Reddit only) Get replies to a specific comment" },
+      },
+      required: ["post_id", "account_id"],
+    },
+    handler: async (p) => JSON.stringify(await handleGetPostComments(p), null, 2),
+  },
+  {
+    name: "late_reply_comment",
+    description:
+      "Reply to a comment on a post. Posts a reply via the connected social account. " +
+      "If comment_id is provided, replies to that specific comment; otherwise replies to the post. " +
+      "⚠️ QUALITY GATE: All URLs in the message are validated before posting. " +
+      "If any URL returns non-200, the reply is BLOCKED. Fix or remove broken URLs first.",
+    parameters: {
+      type: "object",
+      properties: {
+        post_id: { type: "string", description: "Zernio post ID or platform-specific post ID" },
+        account_id: { type: "string", description: "Social account ID to reply from" },
+        message: { type: "string", description: "The reply text" },
+        comment_id: {
+          type: "string",
+          description: "Reply to this specific comment (optional — omit to reply to the post itself)",
+        },
+      },
+      required: ["post_id", "account_id", "message"],
+    },
+    handler: async (p) => JSON.stringify(await handleReplyComment(p), null, 2),
+  },
+  {
+    name: "late_hide_comment",
+    description:
+      "Hide a comment on a post. Hidden comments are only visible to the commenter and page admin. " +
+      "Supported by Facebook, Instagram, Threads, and X/Twitter.",
+    parameters: {
+      type: "object",
+      properties: {
+        post_id: { type: "string", description: "Zernio post ID or platform-specific post ID" },
+        comment_id: { type: "string", description: "Comment ID to hide" },
+        account_id: { type: "string", description: "Social account ID" },
+      },
+      required: ["post_id", "comment_id", "account_id"],
+    },
+    handler: async (p) => JSON.stringify(await handleHideComment(p), null, 2),
+  },
+  {
+    name: "late_delete_comment",
+    description:
+      "Delete a comment on a post. Permanently removes the comment. " +
+      "Supported by Facebook, Instagram, Bluesky, Reddit, YouTube, and LinkedIn.",
+    parameters: {
+      type: "object",
+      properties: {
+        post_id: { type: "string", description: "Zernio post ID or platform-specific post ID" },
+        comment_id: { type: "string", description: "Comment ID to delete" },
+        account_id: { type: "string", description: "Social account ID" },
+      },
+      required: ["post_id", "comment_id", "account_id"],
+    },
+    handler: async (p) => JSON.stringify(await handleDeleteComment(p), null, 2),
+  },
+  {
+    name: "late_like_comment",
+    description:
+      "Like or upvote a comment on a post. " +
+      "Supported by Facebook, Twitter/X, Bluesky, and Reddit.",
+    parameters: {
+      type: "object",
+      properties: {
+        post_id: { type: "string", description: "Zernio post ID or platform-specific post ID" },
+        comment_id: { type: "string", description: "Comment ID to like" },
+        account_id: { type: "string", description: "Social account ID" },
+      },
+      required: ["post_id", "comment_id", "account_id"],
+    },
+    handler: async (p) => JSON.stringify(await handleLikeComment(p), null, 2),
+  },
 ];
 
 // ---------------------------------------------------------------------------
@@ -927,6 +1358,12 @@ const session = await joinSession({
         "post analytics",
         "content calendar",
         "content schedule",
+        "comment",
+        "inbox",
+        "reply",
+        "hide comment",
+        "delete comment",
+        "like comment",
       ];
       if (keywords.some((kw) => msg.includes(kw))) {
         return {

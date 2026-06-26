@@ -154,7 +154,7 @@ function startServer(session) {
 
                 const formatted = formatEvent(payload);
                 try {
-                  session.send(`[Tasker Phone Event]\n${formatted}`);
+                  session.send({ prompt: `[Tasker Phone Event]\n${formatted}`, mode: "immediate" });
                 } catch {
                   // session.send failure — log but don't crash
                 }
@@ -385,16 +385,15 @@ const session = await joinSession({
 });
 
 // ---------------------------------------------------------------------------
-// Non-blocking startup — wrapped in try/catch so it NEVER crashes the host
+// Non-blocking startup — fire-and-forget so it NEVER blocks extension loading
 // NO ngrok at startup. Tunnel only starts when tasker_start_tunnel is called.
 // ---------------------------------------------------------------------------
-try {
-  const server = await startServer(session);
+startServer(session).then((server) => {
   _server = server;
   if (!server) {
     console.error(`⚠️ Tasker Bridge: ${bridgeError || "failed to start"} — tools still available`);
   }
-} catch (err) {
+}).catch((err) => {
   bridgeError = err.message;
   console.error(`⚠️ Tasker Bridge startup failed: ${err.message} — tools still available`);
-}
+});
