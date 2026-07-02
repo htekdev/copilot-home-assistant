@@ -17,16 +17,18 @@
  *   - dev_reset          — Reset staged changes or undo commits
  *   - dev_rebase         — Rebase current branch onto another
  *   - dev_merge_pr       — Merge a {{EMPLOYER_PARENT}} PR (squash by default, delete branch)
+ *   - dev_get_pr_details — Fetch ALL PR info (title, body, comments, reviews, CI checks, Vercel preview URL, linked issues) in one call
  *
  * Zero external dependencies — uses only node:* built-ins + @{{EMPLOYER_PARENT}}/copilot-sdk.
  */
 import { execSync } from "node:child_process";
-import { existsSync, mkdirSync } from "node:fs";
-import { resolve, basename } from "node:path";
+import { existsSync, mkdirSync, unlinkSync, writeFileSync, readFileSync } from "node:fs";
+import { resolve, basename, dirname } from "node:path";
+import { fileURLToPath } from "node:url";
 import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
 
 // ── Constants ───────────────────────────────────────────────────────────────
-const REPOS_ROOT = "C:\\Repos\\{{{{EMPLOYER_PARENT}}_USERNAME}}";
+const REPOS_ROOT = "C:\\Repos\\{{GITHUB_USERNAME}}";
 
 /**
  * Repos where agents ARE allowed to commit/push directly to main/master.
@@ -42,7 +44,7 @@ const MAIN_BRANCH_BLOCKED_MSG = [
   "🚫 BLOCKED: Direct commits/pushes to main/master are not allowed in this repo.",
   "",
   "Agents MUST use the branch + PR workflow:",
-  "  1. Use `start_dev_branch` to create an isolated worktree (e.g. start_dev_branch repo='{{{{EMPLOYER_PARENT}}_USERNAME}}/my-repo' branch='feat/my-feature')",
+  "  1. Use `start_dev_branch` to create an isolated worktree (e.g. start_dev_branch repo='{{GITHUB_USERNAME}}/my-repo' branch='feat/my-feature')",
   "  2. Make your changes in that worktree folder",
   "  3. Use `dev_add` + `dev_commit` + `dev_push` from the worktree",
   "  4. Use `create_vercel_pr` (for Vercel repos) or create a PR via `dev_push` + gh CLI",
@@ -111,6 +113,36 @@ function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+function normalizePrTitle(title) {
+  return String(title || "")
+    .replace(/\\n/g, " ")
+    .replace(/\r?\n/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function normalizePrBody(description) {
+  return String(description || "")
+    .replace(/\r\n/g, "\n")
+    .replace(/\\n/g, "\n");
+}
+
+function createPrBodyFile(folder, description) {
+  const bodyPath = resolve(
+    folder || process.cwd(),
+    `.copilot-pr-body-${process.pid}-${Date.now()}.md`
+  );
+  writeFileSync(bodyPath, normalizePrBody(description), "utf8");
+  return bodyPath;
+}
+
+function removeFileQuietly(filePath) {
+  if (!filePath) return;
+  try {
+    unlinkSync(filePath);
+  } catch {}
+}
+
 /**
  * Check if the current branch is main/master AND the repo is NOT in the
  * DIRECT_MAIN_REPOS allowlist. Returns { blocked, branch, repoName } where
@@ -138,7 +170,7 @@ function isMainBranchBlocked(folder) {
 
 /**
  * Extract the short repo name from a folder path or git remote.
- * e.g. "C:\Repos\{{{{EMPLOYER_PARENT}}_USERNAME}}\htek-dev-site\workdir\feat--foo" → "htek-dev-site"
+ * e.g. "C:\Repos\{{GITHUB_USERNAME}}\htek-dev-site\workdir\feat--foo" → "htek-dev-site"
  *      or from git remote origin → "htek-dev-site"
  */
 function detectRepoName(folder) {
@@ -154,7 +186,7 @@ function detectRepoName(folder) {
     const normalized = folder.replace(/\\/g, "/");
     const root = REPOS_ROOT.replace(/\\/g, "/");
     if (normalized.startsWith(root)) {
-      // e.g. "C:/Repos/{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site/workdir/feat--foo" → "htek-dev-site"
+      // e.g. "C:/Repos/{{GITHUB_USERNAME}}/htek-dev-site/workdir/feat--foo" → "htek-dev-site"
       const relative = normalized.slice(root.length + 1); // "htek-dev-site/workdir/..."
       const topDir = relative.split("/")[0];
       if (topDir) return topDir;
@@ -384,39 +416,45 @@ async function handleCreateVercelPr(args) {
       prNumber = prData.number;
       prUrl = prData.url;
     } else {
-      // Create new PR — escape title and body for shell
-      const escapedTitle = title.replace(/"/g, '\\"');
-      const escapedBody = description.replace(/"/g, '\\"');
+      // Create new PR — use --body-file so multi-line descriptions survive on Windows
+      const normalizedTitle = normalizePrTitle(title);
+      const titleArg = shellEscape(normalizedTitle);
+      const bodyFilePath = createPrBodyFile(folder, description);
+      const bodyFileArg = shellEscape(bodyFilePath);
 
-      const createResult = tryRun(
-        `gh pr create --repo ${repo} --head ${branch} --title "${escapedTitle}" --body "${escapedBody}" --json number,url`,
-        folder,
-        30_000
-      );
-
-      if (!createResult.ok) {
-        // Sometimes gh pr create doesn't support --json, fall back
-        const createFallback = tryRun(
-          `gh pr create --repo ${repo} --head ${branch} --title "${escapedTitle}" --body "${escapedBody}"`,
+      try {
+        const createResult = tryRun(
+          `gh pr create --repo ${repo} --head ${branch} --title ${titleArg} --body-file ${bodyFileArg} --json number,url`,
           folder,
           30_000
         );
 
-        if (!createFallback.ok) {
-          return JSON.stringify({
-            error: `Failed to create PR: ${createFallback.stderr}`,
-          });
-        }
+        if (!createResult.ok) {
+          // Sometimes gh pr create doesn't support --json, fall back
+          const createFallback = tryRun(
+            `gh pr create --repo ${repo} --head ${branch} --title ${titleArg} --body-file ${bodyFileArg}`,
+            folder,
+            30_000
+          );
 
-        // Parse PR URL from stdout (gh pr create prints the URL)
-        prUrl = createFallback.stdout.trim();
-        // Extract PR number from URL: .../pull/42
-        const urlMatch = prUrl.match(/\/pull\/(\d+)/);
-        prNumber = urlMatch ? parseInt(urlMatch[1], 10) : null;
-      } else {
-        const prData = JSON.parse(createResult.stdout);
-        prNumber = prData.number;
-        prUrl = prData.url;
+          if (!createFallback.ok) {
+            return JSON.stringify({
+              error: `Failed to create PR: ${createFallback.stderr}`,
+            });
+          }
+
+          // Parse PR URL from stdout (gh pr create prints the URL)
+          prUrl = createFallback.stdout.trim();
+          // Extract PR number from URL: .../pull/42
+          const urlMatch = prUrl.match(/\/pull\/(\d+)/);
+          prNumber = urlMatch ? parseInt(urlMatch[1], 10) : null;
+        } else {
+          const prData = JSON.parse(createResult.stdout);
+          prNumber = prData.number;
+          prUrl = prData.url;
+        }
+      } finally {
+        removeFileQuietly(bodyFilePath);
       }
     }
 
@@ -427,8 +465,11 @@ async function handleCreateVercelPr(args) {
       });
     }
 
-    // ── Step 3: Poll for Vercel preview URL ───────────────────────────
-    const vercelResult = await pollVercelPreview(repo, prNumber, folder, max_wait);
+    // ── Step 3: Poll for Vercel preview URL via direct API ────────────
+    const projectId = VERCEL_PROJECT_MAP[repo];
+    const vercelResult = projectId
+      ? await pollVercelDeployment(projectId, branch, max_wait)
+      : await pollVercelPreview(repo, prNumber, folder, max_wait);
 
     // ── Build response based on deployment status ─────────────────────
     if (vercelResult.status === "failed") {
@@ -566,8 +607,60 @@ async function handleDevCommit(args) {
       });
     }
 
+    // ── Hookflow YAML PS scope-prefix guard (Q-038) ────────────────────────
+    // Before committing, scan any staged .{{EMPLOYER_PARENT}}/hookflows/*.yml files for
+    // the PowerShell scope-prefix bug: "${variable}: " which PS interprets as
+    // a drive prefix (like $env:VAR) causing platform-wide ParseError.
+    try {
+      const stagedFiles = tryRun("git diff --cached --name-only", folder, 5_000);
+      if (stagedFiles.ok) {
+        const hookflowFiles = stagedFiles.stdout
+          .split("\n")
+          .map((f) => f.trim())
+          .filter((f) => f.includes(".{{EMPLOYER_PARENT}}/hookflows/") && f.endsWith(".yml"));
+
+        for (const relFile of hookflowFiles) {
+          const absFile = resolve(folder, relFile);
+          if (!existsSync(absFile)) continue;
+          const yamlContent = readFileSync(absFile, "utf-8");
+
+          // Detect "${variable}: " — PS scope-prefix bug pattern
+          // Matches e.g. "${tool}: checking" which PS interprets as drive access
+          const scopePrefixBugPattern = /\$\{([A-Za-z_][A-Za-z0-9_]*)\}\s*:/g;
+          const bugMatches = [...yamlContent.matchAll(scopePrefixBugPattern)];
+
+          if (bugMatches.length > 0) {
+            const buggyExprs = bugMatches.map((m) => `\${${m[1]}}:`).join(", ");
+            return JSON.stringify({
+              error: [
+                `🚫 BLOCKED: PowerShell scope-prefix bug detected in hookflow YAML: ${relFile}`,
+                "",
+                `Problematic pattern(s): ${buggyExprs}`,
+                "PowerShell interprets \"\${variable}:\" as a drive/scope prefix (like \$env:VAR),",
+                "NOT as variable interpolation followed by a literal colon.",
+                "This causes a platform-wide ParseError that blocks ALL agents (Q-038 incident, Jun 9 2026).",
+                "",
+                "Fix — use string concatenation instead:",
+                `  ❌ Write-Host "Tool \${tool}: checking..."`,
+                `  ✅ Write-Host ("Tool " + \$tool + ": checking...")`,
+                `  ✅ Write-Host "Tool \$tool is checking..."  (no colon immediately after)`,
+                "",
+                "Commit blocked. Fix the YAML and stage the file again.",
+              ].join("\n"),
+              file: relFile,
+              action: "dev_commit",
+            });
+          }
+        }
+      }
+    } catch (_hookflowCheckErr) {
+      // Non-fatal — if the guard itself errors, allow the commit to proceed.
+      // The guard is defense-in-depth; don't let it block legitimate work.
+    }
+    // ── End hookflow guard ─────────────────────────────────────────────────
+
     // Commit with co-author trailer
-    const commitCmd = `git commit -m ${shellEscape(message)} --trailer "Co-authored-by: Copilot <223556219+Copilot@users.noreply.{{EMPLOYER_PARENT}}.com>"`;
+    const commitCmd = `git commit -m ${shellEscape(message)} --trailer "Co-authored-by: Copilot <{{EMAIL_ADDRESS}}.{{EMPLOYER_PARENT}}.com>"`;
     const result = run(commitCmd, folder, 15_000);
 
     return JSON.stringify({
@@ -584,10 +677,54 @@ async function handleDevCommit(args) {
  * Known Vercel-connected repos — auto-detect for preview URL polling.
  */
 const VERCEL_REPOS = new Set([
-  "{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site",
-  "{{{{EMPLOYER_PARENT}}_USERNAME}}/blackout-pickleball",
-  "{{{{EMPLOYER_PARENT}}_USERNAME}}/carplay-mobile-detail",
+  "{{GITHUB_USERNAME}}/htek-dev-site",
+  "{{GITHUB_USERNAME}}/blackout-pickleball",
+  "{{GITHUB_USERNAME}}/carplay-mobile-detail",
 ]);
+
+/**
+ * Map from {{EMPLOYER_PARENT}} owner/repo → Vercel project ID.
+ * Used for direct Vercel API polling instead of {{EMPLOYER_PARENT}} comment scraping.
+ * Project IDs confirmed via API on 2026-07-15.
+ */
+const VERCEL_PROJECT_MAP = {
+  "{{GITHUB_USERNAME}}/htek-dev-site":         "prj_K8pwwEe55wdsVfh9OxRIRgEXhJGn",
+  "{{GITHUB_USERNAME}}/blackout-pickleball":   "prj_3J80wNWJ8ctTgzR5awsSdRrXgbpx",
+  "{{GITHUB_USERNAME}}/carplay-mobile-detail": "prj_XeZRwplsqDTvf8QiaHcf6NZfuHVY",
+};
+
+// ---------------------------------------------------------------------------
+// Vercel API helpers — load token from .env (same pattern as vercel-env ext)
+// ---------------------------------------------------------------------------
+
+function loadVercelEnv() {
+  try {
+    const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..", "..");
+    const raw = readFileSync(resolve(repoRoot, ".env"), "utf-8");
+    const vars = {};
+    for (const line of raw.split(/\r?\n/)) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx < 0) continue;
+      const key = trimmed.slice(0, eqIdx).trim();
+      let val = trimmed.slice(eqIdx + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) || (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
+      }
+      vars[key] = val;
+    }
+    return vars;
+  } catch { return {}; }
+}
+
+function getVercelToken() {
+  return process.env.VERCEL_TOKEN || loadVercelEnv().VERCEL_TOKEN || "";
+}
+
+function getVercelTeamId() {
+  return process.env.VERCEL_TEAM_ID || loadVercelEnv().VERCEL_TEAM_ID || "";
+}
 
 /**
  * Detect the {{EMPLOYER_PARENT}} owner/repo from git remote origin URL.
@@ -825,6 +962,77 @@ async function pollVercelPreview(repo, prNumber, folder, maxWaitSec = 120) {
 }
 
 /**
+ * Poll Vercel API directly for a deployment on a specific branch.
+ * Replaces {{EMPLOYER_PARENT}} comment polling — queries Vercel API for READY state.
+ * Returns { status: "success"|"failed"|"timeout", previewUrl, inspectorUrl, uid, error_summary }
+ */
+async function pollVercelDeployment(projectId, branch, maxWaitSec = 180) {
+  const token = getVercelToken();
+  const teamId = getVercelTeamId();
+  if (!token) {
+    return {
+      status: "timeout",
+      previewUrl: null,
+      inspectorUrl: null,
+      uid: null,
+      error_summary: "VERCEL_TOKEN not configured — cannot poll Vercel API.",
+    };
+  }
+
+  const headers = { Authorization: `Bearer ${token}` };
+  const encoded = encodeURIComponent(branch);
+  const teamParam = teamId ? `&teamId=${encodeURIComponent(teamId)}` : "";
+  const apiUrl = `https://api.vercel.com/v6/deployments?projectId=${encodeURIComponent(projectId)}&meta-{{EMPLOYER_PARENT}}CommitRef=${encoded}&limit=1${teamParam}`;
+
+  const pollInterval = 10; // seconds
+  const maxAttempts = Math.ceil(maxWaitSec / pollInterval);
+  let deploymentUid = null;
+
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    await sleep(pollInterval * 1000);
+    try {
+      const res = await fetch(apiUrl, { headers });
+      if (!res.ok) continue;
+      const data = await res.json();
+      const dep = data.deployments?.[0];
+      if (!dep) continue;
+
+      deploymentUid = dep.uid;
+      const state = (dep.state || dep.readyState || "").toUpperCase();
+
+      if (state === "READY") {
+        return {
+          status: "success",
+          previewUrl: dep.url ? `https://${dep.url}` : null,
+          inspectorUrl: `https://vercel.com/deployment/${dep.uid}`,
+          uid: deploymentUid,
+          error_summary: null,
+        };
+      }
+
+      if (state === "ERROR" || state === "CANCELED") {
+        return {
+          status: "failed",
+          previewUrl: null,
+          inspectorUrl: `https://vercel.com/deployment/${dep.uid}`,
+          uid: deploymentUid,
+          error_summary: `Vercel deployment ${state.toLowerCase()} — check inspector for build logs.`,
+        };
+      }
+      // QUEUED, BUILDING, INITIALIZING — continue polling
+    } catch { /* network error — retry */ }
+  }
+
+  return {
+    status: "timeout",
+    previewUrl: null,
+    inspectorUrl: deploymentUid ? `https://vercel.com/deployment/${deploymentUid}` : null,
+    uid: deploymentUid,
+    error_summary: `No READY Vercel deployment found for branch '${branch}' within ${maxWaitSec}s. The build may still be in progress.`,
+  };
+}
+
+/**
  * dev_push — Push current branch to remote.
  * Auto-detects Vercel-connected repos and polls for preview URLs when a PR exists.
  */
@@ -880,19 +1088,15 @@ async function handleDevPush(args) {
     let vercelResult = {};
 
     if (shouldPoll && detectedRepo) {
-      const pr = findOpenPr(detectedRepo, branch, folder);
-      if (pr) {
-        const vercelPollResult = await pollVercelPreview(
-          detectedRepo,
-          pr.number,
-          folder,
-          max_wait
-        );
+      const projectId = VERCEL_PROJECT_MAP[detectedRepo];
+      if (projectId) {
+        const pr = findOpenPr(detectedRepo, branch, folder);
+        const vercelPollResult = await pollVercelDeployment(projectId, branch, max_wait);
 
         if (vercelPollResult.status === "failed") {
           vercelResult = {
-            pr_number: pr.number,
-            pr_url: pr.url,
+            pr_number: pr?.number,
+            pr_url: pr?.url,
             vercel_preview_url: null,
             vercel_status: "failed",
             action_required: "fix_build_error_before_notifying",
@@ -902,28 +1106,27 @@ async function handleDevPush(args) {
               "Fix the build error in error_summary, push the fix, and wait for a successful Vercel rebuild before sending any PR or preview update to {{PARENT_1}}.",
             inspector_url: vercelPollResult.inspectorUrl,
             error_summary: vercelPollResult.error_summary,
-            deployment_details: vercelPollResult.deploymentDetails,
             vercel_note:
               "⚠️ Vercel deployment FAILED. DO NOT notify user yet. Fix the build error shown in error_summary, push the fix, and wait for Vercel to rebuild successfully before sending any preview URL.",
           };
         } else if (vercelPollResult.status === "success" && vercelPollResult.previewUrl) {
           vercelResult = {
-            pr_number: pr.number,
-            pr_url: pr.url,
+            pr_number: pr?.number,
+            pr_url: pr?.url,
             vercel_preview_url: vercelPollResult.previewUrl,
             vercel_status: "success",
             inspector_url: vercelPollResult.inspectorUrl,
             vercel_note:
-              "✅ Vercel preview URL extracted. Send this to {{PARENT_1}} via Telegram with the speak parameter.",
+              "✅ Vercel preview URL from Vercel API. Send this to {{PARENT_1}} via Telegram with the speak parameter.",
           };
         } else {
           vercelResult = {
-            pr_number: pr.number,
-            pr_url: pr.url,
+            pr_number: pr?.number,
+            pr_url: pr?.url,
             vercel_preview_url: "timeout",
             vercel_status: "timeout",
             inspector_url: vercelPollResult.inspectorUrl,
-            vercel_note: `No Vercel preview comment found within ${max_wait}s. The deployment may still be building — check PR comments later.`,
+            vercel_note: `Vercel deployment not READY within ${max_wait}s. The build may still be in progress — check https://vercel.com for status.`,
           };
         }
       } else if (isVercelRepo) {
@@ -1215,39 +1418,32 @@ async function handleDevRebase(args) {
  * dev_merge_pr — Merge a {{EMPLOYER_PARENT}} PR via gh CLI.
  */
 async function handleDevMergePr(args) {
-  const { repo, pr_number, method, delete_branch } = args;
-
-  if (!repo || !pr_number) {
-    return JSON.stringify({ error: "Both 'repo' and 'pr_number' are required." });
-  }
-
-  const mergeMethod = method || "squash"; // squash, merge, rebase
-  const delBranch = delete_branch !== false; // default true
-
-  try {
-    let cmd = `gh pr merge ${pr_number} --repo ${repo} --${mergeMethod}`;
-    if (delBranch) cmd += " --delete-branch";
-
-    const result = tryRun(cmd, process.cwd(), 30_000);
-
-    if (!result.ok) {
-      return JSON.stringify({
-        error: `Merge failed: ${result.stderr}`,
-        hint: "PR may have merge conflicts or require review approval.",
-      });
-    }
-
-    return JSON.stringify({
-      status: "success",
-      pr_number,
-      repo,
-      method: mergeMethod,
-      branch_deleted: delBranch,
-      output: result.stdout || "PR merged successfully.",
-    });
-  } catch (err) {
-    return JSON.stringify({ error: `Merge failed: ${err.message}` });
-  }
+  // ══════════════════════════════════════════════════════════════════════════
+  // HARD BLOCK — dev_merge_pr is PERMANENTLY DISABLED.
+  //
+  // ALL PR merges must go through the approval-gated flow:
+  //   1. merge_pr(repo, pr_number) → sends {{PARENT_1}} Approve/Deny buttons
+  //   2. {{PARENT_1}} clicks Approve → record written to data/merge-queue.json
+  //   3. merge-agent dispatched → calls execute_approved_merge
+  //
+  // This handler exists only to return a clear error message. The hookflow
+  // enforce-merge-pr-tool-only.yml ALSO blocks this at the preToolUse level,
+  // but this hardcoded refusal is defense-in-depth — if the hookflow ever
+  // fails to fire, the merge still cannot happen.
+  //
+  // History: Surgiquip PRs #35, #25, #27 merged without approval (2026-06-28).
+  //          ServoDetail unauthorized merge (2026-06-19). Never again.
+  // ══════════════════════════════════════════════════════════════════════════
+  return JSON.stringify({
+    error: "REFUSED: dev_merge_pr is permanently disabled.",
+    reason: "All PR merges require explicit {{PARENT_1}} approval via Telegram.",
+    correct_flow: [
+      "1. Call merge_pr(repo, pr_number) — sends {{PARENT_1}} inline keyboard buttons",
+      "2. Wait for {{PARENT_1}} to click Approve",
+      "3. merge-agent is auto-dispatched and calls execute_approved_merge",
+    ],
+    note: "Do NOT attempt to bypass this. The tool will NEVER execute a merge.",
+  });
 }
 
 /**
@@ -1382,6 +1578,261 @@ async function handleDevPrCheckout(args) {
   }
 }
 
+/**
+ * dev_get_pr_details — Fetch comprehensive PR info in a single call.
+ * Combines `gh pr view --json` (basic info, comments, reviews, checks, linked issues)
+ * with the {{EMPLOYER_PARENT}} Deployments API (Vercel preview URL + state) and a Vercel-bot
+ * comment scrape as a fallback for the preview URL.
+ */
+async function handleGetPrDetails(args) {
+  const { repo, pr_number } = args;
+
+  if (!repo || !pr_number) {
+    return JSON.stringify({ error: "Both 'repo' and 'pr_number' are required." });
+  }
+
+  const cwd = process.cwd();
+
+  // ── 1. Pull the bulk of the PR metadata via gh's GraphQL-backed JSON view ──
+  const fields = [
+    "number", "title", "body", "state", "isDraft", "url",
+    "author", "headRefName", "headRefOid", "baseRefName",
+    "createdAt", "updatedAt", "mergedAt", "closedAt",
+    "mergeable", "mergeStateStatus",
+    "labels", "reviewRequests", "reviews", "comments",
+    "statusCheckRollup", "closingIssuesReferences",
+    "additions", "deletions", "changedFiles",
+  ].join(",");
+
+  const prResult = tryRun(
+    `gh pr view ${pr_number} --repo ${repo} --json ${fields}`,
+    cwd,
+    30_000
+  );
+
+  if (!prResult.ok) {
+    return JSON.stringify({
+      error: `Failed to fetch PR: ${prResult.stderr || prResult.stdout}`,
+    });
+  }
+
+  let pr;
+  try {
+    pr = JSON.parse(prResult.stdout);
+  } catch (err) {
+    return JSON.stringify({ error: `Failed to parse PR JSON: ${err.message}` });
+  }
+
+  const headSha = pr.headRefOid;
+
+  // ── 2. Deployments (Vercel) — most-recent deployment + its latest status ──
+  let deployment = null;
+  if (headSha) {
+    const deplResult = tryRun(
+      `gh api "repos/${repo}/deployments?sha=${headSha}&per_page=10"`,
+      cwd,
+      15_000
+    );
+    if (deplResult.ok && deplResult.stdout) {
+      try {
+        const deployments = JSON.parse(deplResult.stdout);
+        if (Array.isArray(deployments) && deployments.length > 0) {
+          // Pick the most recent (deployments are returned newest-first by GH).
+          const d = deployments[0];
+          let state = null;
+          let environmentUrl = null;
+          let logUrl = null;
+          let description = null;
+          let statusUpdatedAt = null;
+
+          const statusResult = tryRun(
+            `gh api "repos/${repo}/deployments/${d.id}/statuses?per_page=10"`,
+            cwd,
+            15_000
+          );
+          if (statusResult.ok && statusResult.stdout) {
+            try {
+              const statuses = JSON.parse(statusResult.stdout);
+              if (Array.isArray(statuses) && statuses.length > 0) {
+                const s = statuses[0]; // newest-first
+                state = s.state;
+                environmentUrl = s.environment_url || null;
+                logUrl = s.log_url || null;
+                description = s.description || null;
+                statusUpdatedAt = s.updated_at || null;
+              }
+            } catch { /* ignore status parse errors */ }
+          }
+
+          deployment = {
+            id: d.id,
+            environment: d.environment,
+            ref: d.ref,
+            sha: d.sha,
+            created_at: d.created_at,
+            updated_at: d.updated_at,
+            state,
+            preview_url: environmentUrl,
+            log_url: logUrl,
+            description,
+            status_updated_at: statusUpdatedAt,
+          };
+        }
+      } catch { /* ignore deployments parse errors */ }
+    }
+  }
+
+  // ── 3. Fallback: scrape Vercel bot comment for preview URL ────────────────
+  if (!deployment || !deployment.preview_url) {
+    const vercelCommentResult = tryRun(
+      `gh api "repos/${repo}/issues/${pr_number}/comments?per_page=100" --jq "[.[] | select(.user.login == \\"vercel[bot]\\" or .user.login == \\"vercel\\") | .body] | last"`,
+      cwd,
+      15_000
+    );
+    if (vercelCommentResult.ok && vercelCommentResult.stdout) {
+      const parsed = parseVercelComment(vercelCommentResult.stdout);
+      if (parsed && (parsed.previewUrl || parsed.inspectorUrl)) {
+        if (!deployment) deployment = { state: parsed.status || null };
+        deployment.preview_url = deployment.preview_url || parsed.previewUrl || null;
+        deployment.inspector_url = parsed.inspectorUrl || null;
+        deployment.source = "vercel_bot_comment";
+      }
+    }
+  }
+
+  // ── 4. CI / check runs — flatten statusCheckRollup into a clean shape ─────
+  const checks = Array.isArray(pr.statusCheckRollup)
+    ? pr.statusCheckRollup.map((c) => ({
+        name: c.name || c.context || null,
+        status: c.status || null,           // QUEUED, IN_PROGRESS, COMPLETED (check runs)
+        conclusion: c.conclusion || null,   // SUCCESS, FAILURE, NEUTRAL, CANCELLED, etc.
+        state: c.state || null,             // legacy commit-status state (success/failure/pending)
+        workflow_name: c.workflowName || null,
+        details_url: c.detailsUrl || c.targetUrl || null,
+        started_at: c.startedAt || null,
+        completed_at: c.completedAt || null,
+      }))
+    : [];
+
+  // Roll-up summary: "success" | "failure" | "pending" | "neutral"
+  let checks_summary = "neutral";
+  if (checks.length > 0) {
+    const norm = (v) => (v || "").toString().toUpperCase();
+    const hasFailure = checks.some(
+      (c) => ["FAILURE", "CANCELLED", "TIMED_OUT", "ACTION_REQUIRED"].includes(norm(c.conclusion)) ||
+             norm(c.state) === "FAILURE" || norm(c.state) === "ERROR"
+    );
+    const hasPending = checks.some(
+      (c) => ["QUEUED", "IN_PROGRESS", "PENDING"].includes(norm(c.status)) ||
+             norm(c.state) === "PENDING"
+    );
+    const allSuccess = checks.every(
+      (c) => norm(c.conclusion) === "SUCCESS" || norm(c.state) === "SUCCESS" ||
+             norm(c.conclusion) === "SKIPPED" || norm(c.conclusion) === "NEUTRAL"
+    );
+    if (hasFailure) checks_summary = "failure";
+    else if (hasPending) checks_summary = "pending";
+    else if (allSuccess) checks_summary = "success";
+  }
+
+  // ── 5. Linked issues — combine API data with body regex parse ─────────────
+  const linkedFromApi = Array.isArray(pr.closingIssuesReferences)
+    ? pr.closingIssuesReferences.map((i) => ({
+        number: i.number,
+        title: i.title,
+        url: i.url,
+        state: i.state || null,
+        source: "api",
+      }))
+    : [];
+
+  const bodyText = pr.body || "";
+  const linkRegex = /\b(?:close[sd]?|fix(?:e[sd])?|resolve[sd]?)\s+#(\d+)/gi;
+  const fromBody = new Set();
+  let m;
+  while ((m = linkRegex.exec(bodyText)) !== null) {
+    fromBody.add(parseInt(m[1], 10));
+  }
+  const apiNumbers = new Set(linkedFromApi.map((i) => i.number));
+  const linkedFromBody = [...fromBody]
+    .filter((n) => !apiNumbers.has(n))
+    .map((n) => ({ number: n, source: "body_regex" }));
+
+  const linked_issues = [...linkedFromApi, ...linkedFromBody];
+
+  // ── 6. Reviews — flatten + summarize ──────────────────────────────────────
+  const reviews = Array.isArray(pr.reviews)
+    ? pr.reviews.map((r) => ({
+        author: r.author?.login || null,
+        state: r.state, // APPROVED, CHANGES_REQUESTED, COMMENTED, DISMISSED, PENDING
+        body: r.body || "",
+        submitted_at: r.submittedAt || null,
+      }))
+    : [];
+
+  // Latest non-COMMENTED review per author wins for the rollup
+  let review_summary = "pending";
+  const latestByAuthor = new Map();
+  for (const r of reviews) {
+    if (!r.author || r.state === "COMMENTED" || r.state === "DISMISSED") continue;
+    const prev = latestByAuthor.get(r.author);
+    if (!prev || (r.submitted_at && r.submitted_at > prev.submitted_at)) {
+      latestByAuthor.set(r.author, r);
+    }
+  }
+  const decisive = [...latestByAuthor.values()];
+  if (decisive.some((r) => r.state === "CHANGES_REQUESTED")) review_summary = "changes_requested";
+  else if (decisive.some((r) => r.state === "APPROVED")) review_summary = "approved";
+
+  // ── 7. Comments — issue/PR conversation comments ──────────────────────────
+  const comments = Array.isArray(pr.comments)
+    ? pr.comments.map((c) => ({
+        author: c.author?.login || null,
+        body: c.body || "",
+        created_at: c.createdAt || null,
+        url: c.url || null,
+      }))
+    : [];
+
+  // ── 8. Reviewers requested ────────────────────────────────────────────────
+  const reviewers_requested = Array.isArray(pr.reviewRequests)
+    ? pr.reviewRequests.map((r) => r.login || r.name || null).filter(Boolean)
+    : [];
+
+  // ── 9. Final assembly ─────────────────────────────────────────────────────
+  return JSON.stringify({
+    repo,
+    number: pr.number,
+    url: pr.url,
+    title: pr.title,
+    body: pr.body || "",
+    state: pr.state,                 // OPEN, CLOSED, MERGED
+    is_draft: pr.isDraft,
+    author: pr.author?.login || null,
+    branch: pr.headRefName,
+    head_sha: headSha,
+    base_branch: pr.baseRefName,
+    created_at: pr.createdAt,
+    updated_at: pr.updatedAt,
+    merged_at: pr.mergedAt || null,
+    closed_at: pr.closedAt || null,
+    mergeable: pr.mergeable,                  // MERGEABLE, CONFLICTING, UNKNOWN
+    merge_state: pr.mergeStateStatus || null, // CLEAN, DIRTY, BLOCKED, BEHIND, etc.
+    additions: pr.additions ?? null,
+    deletions: pr.deletions ?? null,
+    changed_files: pr.changedFiles ?? null,
+    labels: Array.isArray(pr.labels) ? pr.labels.map((l) => l.name) : [],
+    reviewers_requested,
+    reviews,
+    review_summary,
+    comments,
+    checks,
+    checks_summary,
+    deployment,
+    linked_issues,
+  });
+}
+
 // ── Join Session ────────────────────────────────────────────────────────────
 
 await joinSession({
@@ -1397,7 +1848,7 @@ await joinSession({
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site')",
+              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site')",
           },
           branch: {
             type: "string",
@@ -1422,7 +1873,7 @@ await joinSession({
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site')",
+              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site')",
           },
           pr_number: {
             type: "number",
@@ -1439,14 +1890,14 @@ await joinSession({
     {
       name: "create_vercel_pr",
       description:
-        "Push a branch, create a {{EMPLOYER_PARENT}} PR, and wait for the Vercel preview URL. Polls PR comments for the Vercel bot's deployment status. Returns status='success' with preview URL on successful deployment, or status='failed' with action_required='fix_build_error_before_notifying', notify_user=false, error_summary, inspector_url, and deployment_details when the build fails — so you fix it before notifying {{PARENT_1}}. Returns 'timeout' if no result within max_wait seconds. Use after making changes in a worktree created by start_dev_branch.",
+        "Push a branch, create a {{EMPLOYER_PARENT}} PR, and wait for the Vercel preview URL. Queries Vercel API directly for deployment status — no comment polling. Returns status='success' with preview URL on successful deployment, or status='failed' with action_required='fix_build_error_before_notifying', notify_user=false, error_summary, and inspector_url when the build fails — so you fix it before notifying {{PARENT_1}}. Returns 'timeout' if no result within max_wait seconds. Use after making changes in a worktree created by start_dev_branch.",
       parameters: {
         type: "object",
         properties: {
           repo: {
             type: "string",
             description:
-              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site')",
+              "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site')",
           },
           branch: {
             type: "string",
@@ -1551,7 +2002,7 @@ await joinSession({
     {
       name: "dev_push",
       description:
-        "Push the current branch to the remote. Sets upstream tracking by default. Auto-detects Vercel-connected repos (htek-dev-site, blackout-pickleball, carplay-mobile-detail) and polls for the Vercel preview URL when an open PR exists. On success it returns the preview URL to send to {{PARENT_1}}; on Vercel failure it returns action_required='fix_build_error_before_notifying' and notify_user=false so you fix the build before notifying him. Use instead of 'git push' or 'hookflow git-push'.",
+        "Push the current branch to the remote. Sets upstream tracking by default. Auto-detects Vercel-connected repos (htek-dev-site, blackout-pickleball, carplay-mobile-detail) and queries the Vercel API directly for the preview URL when an open PR exists — no comment polling, faster and more reliable. On success it returns the preview URL to send to {{PARENT_1}}; on Vercel failure it returns action_required='fix_build_error_before_notifying' and notify_user=false so you fix the build before notifying him. Use instead of 'git push' or 'hookflow git-push'.",
       parameters: {
         type: "object",
         properties: {
@@ -1716,7 +2167,7 @@ await joinSession({
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{{{EMPLOYER_PARENT}}_USERNAME}}/htek-dev-site').",
+            description: "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site').",
           },
           pr_number: {
             type: "number",
@@ -1735,12 +2186,35 @@ await joinSession({
       },
       handler: handleDevMergePr,
     },
+
+    // ── Get PR Details ──
+    {
+      name: "dev_get_pr_details",
+      description:
+        "Fetch comprehensive details for a {{EMPLOYER_PARENT}} Pull Request in a single call: title, body, state, author, branches, mergeability, labels, reviewers, reviews + review_summary, conversation comments, all CI/check runs + checks_summary, Vercel deployment (preview URL + state, with vercel[bot] comment fallback), and linked issues (closes/fixes/resolves #N + {{EMPLOYER_PARENT}}'s linked issues API). Returns one clean JSON object — use instead of scraping `gh pr view`, `gh pr checks`, deployment APIs, or PR comments separately.",
+      parameters: {
+        type: "object",
+        properties: {
+          repo: {
+            type: "string",
+            description: "{{EMPLOYER_PARENT}} repo in owner/repo format (e.g. '{{GITHUB_USERNAME}}/htek-dev-site').",
+          },
+          pr_number: {
+            type: "number",
+            description: "PR number (e.g. 277).",
+          },
+        },
+        required: ["repo", "pr_number"],
+      },
+      skipPermission: true,
+      handler: handleGetPrDetails,
+    },
   ],
   hooks: {
     onSessionStart: async () => {
       return {
         additionalContext:
-          "[dev-workflow] Extension loaded — ALL git operations available as tools. Raw git commands are BLOCKED by dev-guard. Available: start_dev_branch, dev_pr_checkout, create_vercel_pr, dev_status, dev_add, dev_commit, dev_push, dev_pull, dev_checkout, dev_stash, dev_reset, dev_rebase, dev_merge_pr.",
+          "[dev-workflow] Extension loaded — ALL git operations available as tools. Raw git commands are BLOCKED by dev-guard. Available: start_dev_branch, dev_pr_checkout, create_vercel_pr, dev_status, dev_add, dev_commit, dev_push, dev_pull, dev_checkout, dev_stash, dev_reset, dev_rebase, dev_merge_pr, dev_get_pr_details.",
       };
     },
   },
