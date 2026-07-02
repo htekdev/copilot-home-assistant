@@ -1,0 +1,121 @@
+name: Block direct code file creation on main branch
+description: >
+  Blocks `create` of code files (.js, .mjs, .cjs, .ts, .tsx, .jsx, .py, .go, .rs, .sh, .java, .rb)
+  on the main/master branch of repos that require the branch+PR workflow. Exempt repos (direct-to-main
+  allowed): {{FAMILY_NAME}}-family (config repo), pi-{{FAMILY_NAME}}-family (Pi deployment), agent-mesh-service (ECS
+  auto-deploy on main push). Agents were using the `create` tool to bypass safe-content-write —
+  writing .mjs files directly to main instead of going through start_dev_branch → dev_commit → PR.
+  This closes that escape hatch. Must stay in sync with DIRECT_MAIN_REPOS in dev-workflow/extension.mjs.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [create]
+blocking: true
+env:
+  FILE_PATH_JSON: ${{ toJSON(event.tool.args.path) }}
+steps:
+  - name: Enforce branch+PR workflow for code files in non-{{FAMILY_NAME}}-family repos
+    run: |
+      # ── 1. Parse the file path ───────────────────────────────────────────────
+      $filePath = $null
+      if (-not [string]::IsNullOrWhiteSpace($env:FILE_PATH_JSON)) {
+        try { $filePath = $env:FILE_PATH_JSON | ConvertFrom-Json } catch { $filePath = $env:FILE_PATH_JSON }
+      }
+
+      if ([string]::IsNullOrWhiteSpace($filePath)) {
+        Write-Host 'No file path provided; allowing create.'
+        exit 0
+      }
+
+      # ── 2. Check if the file is a code file ──────────────────────────────────
+      $governedExtensions = @(
+        '.js', '.mjs', '.cjs',          # JavaScript / ESM
+        '.ts', '.tsx', '.jsx',           # TypeScript / JSX
+        '.py',                           # Python
+        '.go',                           # Go
+        '.rs',                           # Rust
+        '.java',                         # Java
+        '.rb',                           # Ruby
+        '.sh', '.bash', '.zsh', '.ps1'   # Shell / PowerShell scripts
+      )
+      $ext = [System.IO.Path]::GetExtension($filePath).ToLower()
+      if ($governedExtensions -notcontains $ext) {
+        Write-Host "Extension '$ext' is not a governed code type; allowing create."
+        exit 0
+      }
+
+      # ── 3. Check if we are in an exempt (direct-to-main) repo ───────────────
+      # Repos in this list auto-deploy on push to main and do not need branch+PR workflow.
+      # Must stay in sync with DIRECT_MAIN_REPOS in dev-workflow/extension.mjs.
+      $directMainRepos = @(
+        '{{FAMILY_NAME}}-family',      # Config/agent repo — direct-to-main by design
+        'pi-{{FAMILY_NAME}}-family',   # Pi deployment variant of {{FAMILY_NAME}}-family
+        'agent-mesh-service' # ECS service — auto-deploys on push to main, no PR needed
+      )
+
+      $remoteUrl = ''
+      try {
+        $remoteUrl = (& git remote get-url origin 2>$null).Trim()
+        if ($LASTEXITCODE -ne 0) { $remoteUrl = '' }
+      } catch { $remoteUrl = '' }
+
+      foreach ($exemptRepo in $directMainRepos) {
+        if ($remoteUrl -match [regex]::Escape($exemptRepo)) {
+          Write-Host "In exempt direct-to-main repo '$exemptRepo' — create on main is permitted."
+          exit 0
+        }
+      }
+
+      # ── 4. Check the current branch ──────────────────────────────────────────
+      $branch = ''
+      try {
+        $branch = (& git rev-parse --abbrev-ref HEAD 2>$null).Trim()
+        if ($LASTEXITCODE -ne 0) { $branch = '' }
+      } catch { $branch = '' }
+
+      # Detached HEAD or unknown state → allow (can't determine context safely)
+      if ([string]::IsNullOrWhiteSpace($branch) -or $branch -eq 'HEAD') {
+        Write-Host "Could not determine current branch (detached HEAD or no git context); allowing create."
+        exit 0
+      }
+
+      # Feature branch → allowed (this is the correct workflow)
+      if ($branch -notin @('main', 'master')) {
+        Write-Host "On feature branch '$branch' in non-{{FAMILY_NAME}}-family repo — create is allowed."
+        exit 0
+      }
+
+      # ── 5. On main branch of a non-{{FAMILY_NAME}}-family repo → BLOCK ─────────────────
+      $repoName = ''
+      if ($remoteUrl -match '{{EMPLOYER_PARENT}}\.com[:/](.+?)(?:\.git)?$') {
+        $repoName = $Matches[1]
+      } elseif (-not [string]::IsNullOrWhiteSpace($remoteUrl)) {
+        $repoName = $remoteUrl
+      } else {
+        $repoName = Split-Path (& git rev-parse --show-toplevel 2>$null) -Leaf
+      }
+
+      $fileName = [System.IO.Path]::GetFileName($filePath)
+
+      $msg = @(
+        "🚫 BLOCKED: Direct creation of '$fileName' ($ext) on branch '$branch' of '$repoName' is not allowed.",
+        "",
+        "Using `create` to write code files directly to main bypasses the branch+PR governance that",
+        "this repo requires. This is the escape hatch that was used to work around safe-content-write",
+        "by writing .mjs files via create — it is now closed.",
+        "",
+        "✅ Correct workflow for '$repoName':",
+        "  1. start_dev_branch   — create a feature branch (e.g. 'feature/add-my-change')",
+        "  2. create / edit      — write your code files on that branch",
+        "  3. dev_add            — stage the changes",
+        "  4. dev_commit         — commit with a descriptive message + Co-authored-by trailer",
+        "  5. dev_push           — push the branch to origin",
+        "  6. create_vercel_pr   — (Vercel repos) or raise a PR through {{EMPLOYER_PARENT}}",
+        "",
+        "Exempt direct-to-main repos (no branch required): {{FAMILY_NAME}}-family, pi-{{FAMILY_NAME}}-family, agent-mesh-service.",
+        "To add a new repo to the exempt list, update DIRECT_MAIN_REPOS in dev-workflow/extension.mjs",
+        "AND the directMainRepos array in block-direct-code-create-on-main.yml — both must stay in sync."
+      )
+
+      Write-Error ($msg -join "`n")
+      exit 1
