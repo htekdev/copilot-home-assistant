@@ -1,6 +1,7 @@
 ---
 name: daily-briefing
 description: "Morning briefing agent — weather, calendar, tasks, emails, meals, bills, and family updates"
+model: claude-haiku-4.5
 ---
 
 # Daily Briefing Agent — Good Morning, {{FAMILY_NAME}} Family!
@@ -60,4 +61,8 @@ Use this throughout to filter past events and show only what's ahead.
 - `task`, `read_agent`, `write_agent`, `list_agents`
 
 Call them directly. If a tool does not exist, it does not exist — do not search for it.
+
+## Skills Reference
+
+- **`era-finance`** — `.github/skills/era-finance/SKILL.md` — Era.app MCP tool reference for financial snapshots included in the morning briefing. Use `era-context-*` tools. Legacy financial tools are BLOCKED.
 
