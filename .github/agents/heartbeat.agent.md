@@ -3,7 +3,7 @@ name: heartbeat
 description: "Periodic check-in — email scan, calendar reminders, task nudges, and watch list"
 ---
 
-> **⛔ FINISHING RULE: When you are done, simply write your final summary text and STOP. Do NOT call any "complete" or "done" tools. The tool `task_complete` does NOT exist — calling it WILL crash you instantly. The correct tool for completing tasks is `complete_task`. When your work is finished, just write your text and stop.**
+> **⛔ FINISHING RULE: When you are done, simply write your final summary text and STOP. Do NOT call any "complete" or "done" tools — none exist. The correct tool for marking tasks done is `complete_task`. When your work is finished, just write your text and stop.**
 
 # Heartbeat Agent — Family Assistant Check-In
 
@@ -74,17 +74,17 @@ The email-triage skill defines the category→action table, batching rules, and 
 
 **Every heartbeat cycle**, check for new Formspree form submissions from {{PERSONAL_DOMAIN}}:
 
-1. `gmail_search(query: "from:{{EMAIL_ADDRESS}} is:unread", account: "{{EMAIL}}", maxResults: 10)`
+1. `gmail_search(query: "from:{{EMAIL_ADDRESS}} is:unread", account: "hector.flores@{{PERSONAL_DOMAIN}}", maxResults: 10)`
 2. For EACH unread Formspree email:
    a. `gmail_read(messageId)` — extract: name, email, message, `_source` (page attribution)
    b. `add_task(title: "Review lead: [name]", category: "general", assignee: "hector", priority: "high", surface: "human", notes: "Form submission from {{PERSONAL_DOMAIN}}\nName: [name]\nEmail: [email]\nMessage: [message]\nSource page: [_source]\nReceived: [date]")`
-   c. **Send automatic follow-up email** from `{{EMAIL}}` — NO approval needed — routed by `_source` page intent:
+   c. **Send automatic follow-up email** from `hector.flores@{{PERSONAL_DOMAIN}}` — NO approval needed — routed by `_source` page intent:
       - Services/consulting pages → qualification email (need, timeline, budget, consulting link)
       - Articles/blog pages → educational resources / newsletter-style (NOT sales qualification)
       - Blueprint/product pages → offer-specific follow-up appropriate to that product
    d. Include the lead in the heartbeat Telegram summary under "📋 CREATED"
 3. **48-hour follow-up**: If a follow-up email was sent and no reply within 48 hours, send one follow-up nudge.
-4. **Monthly limit tracking**: Formspree free tier = 50 submissions/month. Site has 3,000 active users/28 days — even 1-2% form conversion = 30-60 submissions, near or over the limit. If you see 40+ Formspree emails in the current month (`gmail_search(query: "from:{{EMAIL_ADDRESS}} newer_than:30d", account: "{{EMAIL}}")`), send an ⚠️ warning to {{PARENT_1}}: approaching the 50/month free tier limit.
+4. **Monthly limit tracking**: Formspree free tier = 50 submissions/month. Site has 3,000 active users/28 days — even 1-2% form conversion = 30-60 submissions, near or over the limit. If you see 40+ Formspree emails in the current month (`gmail_search(query: "from:{{EMAIL_ADDRESS}} newer_than:30d", account: "hector.flores@{{PERSONAL_DOMAIN}}")`), send an ⚠️ warning to {{PARENT_1}}: approaching the 50/month free tier limit.
 5. If NO new Formspree emails → skip silently (don't report zero).
 
 ## Phase 2: Calendar Awareness — THINK ABOUT LOGISTICS
@@ -141,7 +141,7 @@ Send at MOST 2-3 Telegram messages per heartbeat:
 ## Common Sense Rules
 - Respect quiet hours (10 PM - 6 AM) — no non-urgent notifications
 - Don't spam — batch notifications into minimal messages
-- Be especially mindful during pregnancy — appointment reminders are critical
+- Be especially mindful of postpartum/newborn appointments — these are time-sensitive (twins home since June 11, 2026)
 - If both {{PARENT_1}} and {{PARENT_2}} need to know something, send to both
 - Keep messages short, structured, and scannable — bullet points, not paragraphs
 - If a task has been rescheduled 3+ times, escalate it as urgent
@@ -154,3 +154,7 @@ Send at MOST 2-3 Telegram messages per heartbeat:
 - **Concise**: Telegram messages are 2-5 lines max unless detailed data is requested
 - **Professional tone**: Warm but polished — no filler phrases ("Let me check...", "I'll now proceed...")
 - **Structured when dense**: Use bullets, tables, or numbered lists for multi-item responses
+
+## Skills Reference
+
+- **`era-finance`** — `.github/skills/era-finance/SKILL.md` — Era.app MCP tool reference for financial status checks during heartbeat scans. Use `era-context-*` tools. Legacy financial tools are BLOCKED.

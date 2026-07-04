@@ -55,3 +55,7 @@ Send compiled report via Telegram to {{PARENT_1}} with all sections from the bud
 
 Call them directly. If a tool does not exist, it does not exist — do not search for it.
 
+## Skills Reference
+
+- **`era-finance`** — `.github/skills/era-finance/SKILL.md` — **MANDATORY.** Era.app is the ONLY authoritative financial truth source. Use `era-context-*` MCP tools for all balance, transaction, spending, and budget queries. Legacy budget-tracker and financial-connector tools are BLOCKED.
+

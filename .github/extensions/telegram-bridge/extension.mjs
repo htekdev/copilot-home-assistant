@@ -16,14 +16,17 @@ import { resolve, join, basename, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import { execSync } from "node:child_process";
 import { hostname } from "node:os";
-import { joinSession } from "@{{EMPLOYER_PARENT}}/copilot-sdk/extension";
+import { joinSession } from "@github/copilot-sdk/extension";
 import { validateMergeProof, E2E_REPOS, VERCEL_REPOS } from "../pr-merger/proof-utils.mjs";
-import { getCallerIdentity } from "../shared/agent-identity-client.mjs";
+import { getIdentityFromInput } from "../shared/agent-identity-client.mjs";
 
-// ---------------------------------------------------------------------------
-// Agent Identity Footer — tracks the caller's sessionId to append identity info
-// ---------------------------------------------------------------------------
-let _tgCallerSessionId = null;
+// Agent identity footer — tracks last-seen identity from ANY hook call,
+// then the telegram_send_message handler appends it as a footer.
+// This is robust: identity is captured from all tool calls in the session,
+// so even if onPreToolUse doesn't fire for extension-own tools, we still
+// have identity from prior tool calls in the same agent turn.
+let _lastSeenIdentity = null; // { agent_type, agent_id }
+let _pendingFooter = null; // legacy compat (will be removed eventually)
 
 // ---------------------------------------------------------------------------
 // GramJS-powered large file downloader (MTProto, no 20MB limit)
@@ -115,6 +118,118 @@ function isUserAllowed(userId) {
 }
 
 // ---------------------------------------------------------------------------
+// Multi-Agent Review Gate — inline check for merge_pr
+// Reads data/review-config.json and data/review-ledger.json to verify
+// that required review agents have approved before allowing merge.
+// ---------------------------------------------------------------------------
+const REVIEW_CONFIG_PATH = resolve(process.cwd(), "data", "review-config.json");
+const REVIEW_LEDGER_PATH = resolve(process.cwd(), "data", "review-ledger.json");
+
+function checkReviewGateInline(repo, prNumber, currentHeadSha) {
+  // Load config
+  let config;
+  try {
+    if (!existsSync(REVIEW_CONFIG_PATH)) return { allowed: true, reason: "no_config_file" };
+    config = JSON.parse(readFileSync(REVIEW_CONFIG_PATH, "utf-8"));
+  } catch {
+    return { allowed: true, reason: "config_parse_error" };
+  }
+
+  const repoConfig = config.repos?.[repo];
+  if (!repoConfig) {
+    return { allowed: true, reason: "repo_not_configured" };
+  }
+
+  // Load ledger
+  let ledger;
+  try {
+    if (!existsSync(REVIEW_LEDGER_PATH)) ledger = {};
+    else ledger = JSON.parse(readFileSync(REVIEW_LEDGER_PATH, "utf-8"));
+  } catch {
+    ledger = {};
+  }
+
+  const key = `${repo}#${prNumber}`;
+  const entry = ledger[key];
+
+  // No reviews yet
+  if (!entry) {
+    const required = repoConfig.required_reviewers.map(r => r.agent);
+    return {
+      allowed: false,
+      reason: `PR requires review from: ${required.join(", ")}. No reviews found.`,
+      guidance: `Dispatch these agents to review PR #${prNumber} before merging.`,
+      pending: required,
+      denied: [],
+    };
+  }
+
+  // Commit invalidation
+  if (repoConfig.commit_invalidation && currentHeadSha && entry.head_commit !== currentHeadSha) {
+    const required = repoConfig.required_reviewers.map(r => r.agent);
+    return {
+      allowed: false,
+      reason: `New commits since last review (reviewed: ${entry.head_commit?.slice(0, 7)}, current: ${currentHeadSha?.slice(0, 7)}). Reviews invalidated.`,
+      guidance: `Re-request reviews from: ${required.join(", ")}`,
+      pending: required,
+      denied: [],
+    };
+  }
+
+  // Fix cycle cap
+  const maxCycles = config.defaults?.max_fix_cycles || 3;
+  if (entry.fix_cycle_count >= maxCycles) {
+    return {
+      allowed: false,
+      reason: `Max fix cycles (${maxCycles}) reached. Requires {{PARENT_1}}'s manual review.`,
+      guidance: "Escalate to {{PARENT_1}} — the fix loop has not converged.",
+      pending: [],
+      denied: entry.blockers || [],
+    };
+  }
+
+  // Check each required reviewer
+  const missing = [];
+  const denied = [];
+  const needsManual = [];
+
+  for (const reviewer of repoConfig.required_reviewers) {
+    const review = entry.reviews[reviewer.agent];
+    if (!review) {
+      missing.push(reviewer.agent);
+    } else if (review.status === "DENY") {
+      denied.push(reviewer.agent);
+    } else if (review.status === "NEEDS_MANUAL_REVIEW") {
+      needsManual.push(reviewer.agent);
+    }
+  }
+
+  if (missing.length > 0 || denied.length > 0 || needsManual.length > 0) {
+    const parts = [];
+    if (missing.length > 0) parts.push(`Missing reviews: ${missing.join(", ")}`);
+    if (denied.length > 0) parts.push(`Denied by: ${denied.join(", ")}`);
+    if (needsManual.length > 0) parts.push(`Needs manual review: ${needsManual.join(", ")}`);
+
+    let guidance;
+    if (missing.length > 0) guidance = `Dispatch these agents to review: ${missing.join(", ")}`;
+    else if (denied.length > 0) guidance = "Address deny feedback (use get_review_status), push fixes, then re-request review.";
+    else guidance = "Wait for {{PARENT_1}} to manually review flagged items.";
+
+    return {
+      allowed: false,
+      reason: parts.join(". "),
+      guidance,
+      pending: missing,
+      denied,
+      needs_manual: needsManual,
+    };
+  }
+
+  // All approved — if human_approval_required, the existing Telegram button flow handles it
+  return { allowed: true, reason: "all_approved", human_approval_required: repoConfig.human_approval_required };
+}
+
+// ---------------------------------------------------------------------------
 // PR Merge Approval System
 // Agents call merge_pr(repo, pr_number, description) → Telegram inline keyboard
 // → {{PARENT_1}} taps ✅/❌ → deterministic merge or denial
@@ -132,9 +247,9 @@ const renewalTimers = new Map();
  */
 const MAX_APPROVAL_RENEWALS = 24;
 
-const {{PARENT_1}}_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_1}}";
-const {{PARENT_2}}_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_2}}";
-const {{CAREGIVER_NAME}}_CHAT_ID = "{{TELEGRAM_CAREGIVER}}";
+const HECTOR_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_1}}";
+const PAULA_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_2}}";
+const SOFIA_CHAT_ID = "{{TELEGRAM_CAREGIVER}}";
 const PR_MERGE_CONFIG_PATH = resolve(process.cwd(), "data", "pr-merge-config.json");
 const USER_SCOPES_PATH = resolve(process.cwd(), "data", "telegram-user-scopes.json");
 const MERGE_QUEUE_PATH = resolve(process.cwd(), "data", "merge-queue.json");
@@ -248,7 +363,7 @@ function loadMergeConfig() {
     version: 1,
     defaults: {
       require_approval: true,
-      approver_chat_id: {{PARENT_1}}_CHAT_ID_DEFAULT,
+      approver_chat_id: HECTOR_CHAT_ID_DEFAULT,
       timeout_seconds: 3600,
       merge_method: "squash",
       delete_branch: true,
@@ -292,14 +407,14 @@ function resolveApproverChatId(config, explicitApproverChatId, repo) {
     return String(activeChatId);
   }
 
-  return String(config.defaults?.approver_chat_id || {{PARENT_1}}_CHAT_ID_DEFAULT);
+  return String(config.defaults?.approver_chat_id || HECTOR_CHAT_ID_DEFAULT);
 }
 
 function describeApprover(chatId) {
   const normalized = String(chatId || "");
-  if (normalized === {{PARENT_1}}_CHAT_ID_DEFAULT) return "{{PARENT_1}}";
-  if (normalized === {{PARENT_2}}_CHAT_ID_DEFAULT) return "{{PARENT_2}}";
-  if (normalized === {{CAREGIVER_NAME}}_CHAT_ID) return "{{CAREGIVER_NAME}}";
+  if (normalized === HECTOR_CHAT_ID_DEFAULT) return "{{PARENT_1}}";
+  if (normalized === PAULA_CHAT_ID_DEFAULT) return "{{PARENT_2}}";
+  if (normalized === SOFIA_CHAT_ID) return "{{CAREGIVER_NAME}}";
   return `chat ${normalized}`;
 }
 
@@ -375,7 +490,7 @@ function scheduleApprovalRenewal(requestId, timeoutSeconds) {
         // PR still open — issue a fresh approval request
         const newId = generateRequestId();
         const approverLabel = describeApprover(pending.approverChatId);
-        const prUrl = `https://{{EMPLOYER_PARENT}}.com/${pending.repo}/pull/${pending.prNumber}`;
+        const prUrl = `https://github.com/${pending.repo}/pull/${pending.prNumber}`;
         const descPart = pending.description ? `\n\n📝 <i>${pending.description}</i>` : "";
         const proofPart = pending.proofLinks || "";
 
@@ -481,14 +596,14 @@ function scheduleApprovalRenewal(requestId, timeoutSeconds) {
 }
 
 function getGhToken() {
-  if (process.env.{{EMPLOYER_PARENT}}_TOKEN) return process.env.{{EMPLOYER_PARENT}}_TOKEN;
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   if (process.env.GH_TOKEN) return process.env.GH_TOKEN;
   try {
     if (existsSync(ENV_FILE)) {
       const content = readFileSync(ENV_FILE, "utf-8");
       for (const line of content.split("\n")) {
         const t = line.trim();
-        for (const key of ["{{EMPLOYER_PARENT}}_TOKEN", "GH_TOKEN"]) {
+        for (const key of ["GITHUB_TOKEN", "GH_TOKEN"]) {
           if (t.startsWith(`${key}=`)) {
             let v = t.slice(key.length + 1).trim();
             if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) v = v.slice(1, -1);
@@ -507,10 +622,10 @@ function getGhToken() {
 }
 
 async function ghRestMerge(path, ghToken, options = {}) {
-  const res = await fetch(`https://api.{{EMPLOYER_PARENT}}.com${path}`, {
+  const res = await fetch(`https://api.github.com${path}`, {
     headers: {
       Authorization: `token ${ghToken}`,
-      Accept: "application/vnd.{{EMPLOYER_PARENT}}.v3+json",
+      Accept: "application/vnd.github.v3+json",
       "User-Agent": "copilot-pr-approval/1.0",
       "Content-Type": "application/json",
     },
@@ -828,7 +943,7 @@ async function handleApprovalCallback(callbackQuery) {
   const [, action, requestId] = matchNormal;
   const config = loadMergeConfig();
   const pending = pendingApprovals.get(requestId);
-  const approverChatId = String(pending?.approverChatId || config.defaults?.approver_chat_id || {{PARENT_1}}_CHAT_ID_DEFAULT);
+  const approverChatId = String(pending?.approverChatId || config.defaults?.approver_chat_id || HECTOR_CHAT_ID_DEFAULT);
 
   // Also re-derive the approver from config rules for the repo.
   // Ensures repo-specific approvers (e.g. {{CAREGIVER_NAME}} for taller-mecanico) can always act
@@ -1954,7 +2069,7 @@ async function pollLoop(session) {
                     await sendTelegramMessage(chatId,
                       `❌ MTProto download failed: ${err.message.slice(0, 150)}\n\n` +
                       `**Workaround:** Save the video locally and share the file path:\n` +
-                      `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\``
+                      `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\``
                     );
                     const captionPart = caption ? ` Caption: "${caption}".` : "";
                     queueOrSend(session, {
@@ -1975,7 +2090,7 @@ async function pollLoop(session) {
                   ? `**To enable large file downloads**, add to your .env:\n\`TELEGRAM_API_ID=your_id\`\n\`TELEGRAM_API_HASH=your_hash\`\n(Get them free at https://my.telegram.org/apps)\n\n`
                   : "") +
                 `**Workaround:** Save the video to your computer and share the file path:\n` +
-                `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\`\n\n` +
+                `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\`\n\n` +
                 `I'll pick it up from there and handle the rest! 🎬`
               );
 
@@ -2026,7 +2141,7 @@ async function pollLoop(session) {
                   await sendTelegramMessage(chatId,
                     `📹 This video is too large for Telegram's Bot API download limit (20MB).\n\n` +
                     `**Workaround:** Save it locally and share the file path:\n` +
-                    `\`C:\\Users\\flores{{PARENT_1}}\\Videos\\my-video.mp4\`\n\n` +
+                    `\`C:\\Users\\floreshector\\Videos\\my-video.mp4\`\n\n` +
                     `I'll handle it from there! 🎬`
                   );
                   const captionPart = caption ? ` Caption: "${caption}".` : "";
@@ -2137,11 +2252,11 @@ async function pollLoop(session) {
 let pollStarted = false;
 
 // ---------------------------------------------------------------------------
-// Dynamic agent discovery — reads .{{EMPLOYER_PARENT}}/agents/*.agent.md at startup.
+// Dynamic agent discovery — reads .github/agents/*.agent.md at startup.
 // The main agent (AI) decides which agent to use — no heuristics.
 // ---------------------------------------------------------------------------
 function discoverAgents() {
-  const agentsDir = resolve(process.cwd(), ".{{EMPLOYER_PARENT}}", "agents");
+  const agentsDir = resolve(process.cwd(), ".github", "agents");
   if (!existsSync(agentsDir)) return [];
   return readdirSync(agentsDir)
     .filter((f) => f.endsWith(".agent.md"))
@@ -2201,7 +2316,7 @@ const session = await joinSession({
       // Get current local time in Central timezone
       const now = new Date();
       const localTime = now.toLocaleString("en-US", {
-        timeZone: "America/Chicago",
+        timeZone: "{{TIMEZONE}}",
         weekday: "long",
         year: "numeric",
         month: "long",
@@ -2279,7 +2394,7 @@ const session = await joinSession({
           `- For new requests → launch via task tool (pick the best custom agent_type, or general-purpose if none fits)\n` +
           `- If MULTIPLE independent new requests, launch MULTIPLE agents in parallel\n` +
           `- Each agent responds via telegram_send_message (chat_id: "${senderId}")\n` +
-          `- When writing the agent prompt, remind it to CHECK and USE available skills (.{{EMPLOYER_PARENT}}/skills/) relevant to the task. Skills contain domain-specific procedures that improve quality and consistency.\n\n` +
+          `- When writing the agent prompt, remind it to CHECK and USE available skills (.github/skills/) relevant to the task. Skills contain domain-specific procedures that improve quality and consistency.\n\n` +
           `## STEP 3: Acknowledge & continue\n` +
           `- You only send a Telegram yourself for trivial acknowledgments (e.g., "goodnight", "thanks")\n` +
           `- Continue immediately after dispatching — do not wait for results.`,
@@ -2290,10 +2405,36 @@ const session = await joinSession({
       stopTypingIndicator();
     },
 
-    // Capture caller sessionId for agent identity footer on telegram_send_message
+    // Track agent identity on EVERY tool call — not just telegram_send_message.
+    // This ensures _lastSeenIdentity is populated even if the hook doesn't fire
+    // for extension-own tools (SDK limitation). Identity from prior tool calls
+    // in the same turn will still be available when the handler runs.
     onPreToolUse: async (input) => {
+      // Always update identity from hook input (runtime passes agentId/agentType on every call)
+      const identity = getIdentityFromInput(input);
+      if (identity && (identity.agent_type || identity.agent_id)) {
+        _lastSeenIdentity = identity;
+      }
+
+      // Also set _pendingFooter specifically for telegram_send_message (direct stash)
       if (input.toolName === "telegram_send_message") {
-        _tgCallerSessionId = input.sessionId || null;
+        const agentType = input.agentType || null;
+        const agentId = input.agentId || null;
+        const msgBody = input.toolArgs?.message;
+
+        if (!msgBody || !msgBody.trim()) {
+          _pendingFooter = null;
+          return;
+        }
+
+        const parts = [];
+        if (agentId) parts.push(agentId);
+        else if (agentType) parts.push(agentType);
+        if (parts.length > 0) {
+          const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+          parts.push(timeStr);
+          _pendingFooter = `\n\n— ${parts.join(" | ")}`;
+        }
       }
     },
   },
@@ -2351,24 +2492,32 @@ const session = await joinSession({
             finalMessage = `SPEAK: ${args.speak.trim()}\n\n${args.message}`;
           }
 
-          // Append agent identity footer
-          try {
-            const identity = getCallerIdentity(_tgCallerSessionId);
-            if (identity) {
-              if (identity.ambiguous) {
-                finalMessage += `\n\n— Agent: (parallel launch — identity unresolved)`;
-              } else {
-                const model = identity.model || "";
-                const footer = model
-                  ? `\n\n— ${identity.agent_name} | ${model} | ${identity.agent_type}`
-                  : `\n\n— ${identity.agent_name} | ${identity.agent_type}`;
-                finalMessage += footer;
-              }
-            } else {
-              finalMessage += `\n\n— orchestrator`;
+          // Agent identity footer — multi-layer approach:
+          // 1. _pendingFooter (set by onPreToolUse if it fires for own tools)
+          // 2. _lastSeenIdentity (set by onPreToolUse for ANY prior tool call)
+          // 3. Fallback: 🤖 header regex in message body
+          let footer = null;
+          if (_pendingFooter) {
+            footer = _pendingFooter;
+            _pendingFooter = null;
+          } else if (_lastSeenIdentity && (_lastSeenIdentity.agent_id || _lastSeenIdentity.agent_type)) {
+            const parts = [];
+            if (_lastSeenIdentity.agent_id) parts.push(_lastSeenIdentity.agent_id);
+            else if (_lastSeenIdentity.agent_type) parts.push(_lastSeenIdentity.agent_type);
+            const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+            parts.push(timeStr);
+            footer = `\n\n— ${parts.join(" | ")}`;
+          } else {
+            // Last resort: extract agent name from 🤖 header in message body
+            const headerMatch = args.message?.match(/^🤖\s+(\S+)/);
+            if (headerMatch) {
+              const agentName = headerMatch[1];
+              const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
+              footer = `\n\n— ${agentName} | ${timeStr}`;
             }
-          } catch {
-            // Identity lookup failed — send without footer
+          }
+          if (footer) {
+            finalMessage += footer;
           }
 
           await sendTelegramMessage(targetChat, finalMessage);
@@ -2542,7 +2691,7 @@ const session = await joinSession({
 
         const ghToken = getGhToken();
         if (!ghToken) {
-          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set {{EMPLOYER_PARENT}}_TOKEN in .env." });
+          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
         }
 
         const config = loadMergeConfig();
@@ -2550,9 +2699,9 @@ const session = await joinSession({
         const doDeleteBranch = delete_branch !== false && config.defaults?.delete_branch !== false;
         const timeoutSeconds = config.defaults?.timeout_seconds || 3600;
         const approverChatId = resolveApproverChatId(config, approver_chat_id, repo);
-        const approverLabel = approverChatId === {{PARENT_1}}_CHAT_ID_DEFAULT ? "{{PARENT_1}}"
-          : approverChatId === {{PARENT_2}}_CHAT_ID_DEFAULT ? "{{PARENT_2}}"
-          : approverChatId === {{CAREGIVER_NAME}}_CHAT_ID ? "{{CAREGIVER_NAME}}"
+        const approverLabel = approverChatId === HECTOR_CHAT_ID_DEFAULT ? "{{PARENT_1}}"
+          : approverChatId === PAULA_CHAT_ID_DEFAULT ? "{{PARENT_2}}"
+          : approverChatId === SOFIA_CHAT_ID ? "{{CAREGIVER_NAME}}"
           : approverChatId;
 
         // ── Pre-check: PR must be open, not a draft, and mergeable ──────────
@@ -2593,6 +2742,26 @@ const session = await joinSession({
               hint:
                 "Fix the failing CI builds or deployments (or wait for them to re-run successfully) " +
                 "before requesting merge approval. Approval was NOT sent to {{PARENT_1}}.",
+            });
+          }
+        }
+
+        // ── Pre-check: Multi-agent review gate ──────────────────────────────
+        // Checks data/review-ledger.json for required agent approvals per repo config.
+        // If required agents haven't reviewed → BLOCK with guidance on who to dispatch.
+        {
+          const reviewGateResult = checkReviewGateInline(repo, pr_number, headSha);
+          if (!reviewGateResult.allowed) {
+            return JSON.stringify({
+              error: `Review gate: ${reviewGateResult.reason}`,
+              repo,
+              pr_number,
+              guidance: reviewGateResult.guidance,
+              pending_reviewers: reviewGateResult.pending || [],
+              denied_by: reviewGateResult.denied || [],
+              needs_manual: reviewGateResult.needs_manual || [],
+              hint: "Use get_review_status(repo, pr_number) to see full findings. " +
+                "Dispatch the listed agents to review this PR before merging.",
             });
           }
         }
@@ -2644,7 +2813,7 @@ const session = await joinSession({
         // (handleApprovalCallback) will execute the merge when {{PARENT_1}} taps ✅.
         // This avoids blocking the tool execution (which times out in the runtime).
         const requestId = generateRequestId();
-        const prUrl = `https://{{EMPLOYER_PARENT}}.com/${repo}/pull/${pr_number}`;
+        const prUrl = `https://github.com/${repo}/pull/${pr_number}`;
         const descPart = description ? `\n\n📝 <i>${description}</i>` : "";
 
         const msgText =
@@ -2754,7 +2923,7 @@ const session = await joinSession({
         }
         const ghToken = getGhToken();
         if (!ghToken) {
-          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set {{EMPLOYER_PARENT}}_TOKEN in .env." });
+          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
         }
 
         const config = loadMergeConfig();
@@ -2789,7 +2958,7 @@ const session = await joinSession({
               head_sha: prData.head?.sha || "",
               head_branch: prData.head?.ref || "",
               base_branch: prData.base?.ref || "",
-              url: prData.html_url || `https://{{EMPLOYER_PARENT}}.com/${repo}/pull/${pr_number}`,
+              url: prData.html_url || `https://github.com/${repo}/pull/${pr_number}`,
             });
           } catch (err) {
             return JSON.stringify({ error: `Failed to fetch ${repo}#${pr_number}: ${err.message}` });
@@ -2900,20 +3069,83 @@ const session = await joinSession({
           return JSON.stringify({ error: "Both 'repo' and 'pr_number' are required." });
         }
 
-        // 1) APPROVAL GATE — must be in the queue
-        const approval = findInMergeQueue(repo, pr_number);
+        // 1) APPROVAL GATE — must be in the queue, OR repo opts out of human approval
+        //    when human_approval_required: false in review-config.json AND all review
+        //    agents have approved in review-ledger.json ({{PARENT_1}} directive 2026-07-01).
+        let approval = findInMergeQueue(repo, pr_number);
         if (!approval) {
-          return JSON.stringify({
-            error: "REFUSED: No approval record found for this PR in data/merge-queue.json. " +
-                   "Agent-merge requires a prior approval via the agent_merge tool or 🤖 Agent Merge button.",
+          // Check if this repo is configured for autonomous merge (no human approval required)
+          let reviewConfig;
+          try {
+            if (existsSync(REVIEW_CONFIG_PATH)) {
+              reviewConfig = JSON.parse(readFileSync(REVIEW_CONFIG_PATH, "utf-8"));
+            }
+          } catch { /* fall through */ }
+
+          const repoReviewCfg = reviewConfig?.repos?.[repo];
+          const isAutonomous = repoReviewCfg && repoReviewCfg.human_approval_required === false;
+
+          if (!isAutonomous) {
+            return JSON.stringify({
+              error: "REFUSED: No approval record found for this PR in data/merge-queue.json. " +
+                     "Agent-merge requires a prior approval via the agent_merge tool or 🤖 Agent Merge button. " +
+                     "(To enable autonomous merging, set human_approval_required: false in data/review-config.json for this repo.)",
+              repo,
+              pr_number,
+            });
+          }
+
+          // Autonomous repo — verify ALL required review agents have approved in review-ledger
+          // We need headSha for commit invalidation check; fetch it early here
+          let earlyHeadSha;
+          try {
+            const ghTokenEarly = getGhToken();
+            if (ghTokenEarly) {
+              const earlyPr = await ghRestMerge(`/repos/${repo}/pulls/${pr_number}`, ghTokenEarly);
+              if (earlyPr.ok) earlyHeadSha = earlyPr.data?.head?.sha;
+            }
+          } catch { /* best effort */ }
+
+          const reviewGateEarly = checkReviewGateInline(repo, pr_number, earlyHeadSha);
+          if (!reviewGateEarly.allowed) {
+            return JSON.stringify({
+              error: `REFUSED (autonomous merge gate): All review agents must approve before autonomous merge. ${reviewGateEarly.reason}`,
+              repo,
+              pr_number,
+              pending_reviewers: reviewGateEarly.pending || [],
+              denied_by: reviewGateEarly.denied || [],
+              guidance: reviewGateEarly.guidance,
+              hint: "Dispatch all required review agents, wait for APPROVE from each, then retry execute_approved_merge.",
+            });
+          }
+
+          // All reviews green — write a synthetic auto-approval record for audit trail
+          const syntheticApproval = {
             repo,
             pr_number,
-          });
+            description: `Autonomous merge — all review agents approved (no human approval required)`,
+            approved_by: "review-agents",
+            approved_by_chat_id: HECTOR_CHAT_ID_DEFAULT,
+            approved_at: new Date().toISOString(),
+            sha_at_approval: earlyHeadSha || "",
+            status: "auto-approved",
+            attempts: 0,
+          };
+          addToMergeQueue(syntheticApproval);
+          approval = syntheticApproval;
+
+          // Log the autonomous merge to Telegram (inform {{PARENT_1}}, don't ask)
+          await telegramApi("sendMessage", {
+            chat_id: HECTOR_CHAT_ID_DEFAULT,
+            text: `🤖 <b>Autonomous merge queued:</b> ${repo}#${pr_number}\n` +
+                  `All review agents approved. Merging now (human_approval_required: false).`,
+            parse_mode: "HTML",
+          }).catch(() => {});
         }
 
         const ghToken = getGhToken();
         if (!ghToken) {
-          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set {{EMPLOYER_PARENT}}_TOKEN in .env." });
+          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
         }
 
         const config = loadMergeConfig();
@@ -2965,13 +3197,33 @@ const session = await joinSession({
           }
         }
 
+        // 3.5) MULTI-AGENT REVIEW GATE — verify review-ledger approvals
+        // This prevents merge-agent from bypassing the review system even though
+        // the PR has Telegram approval in merge-queue.json.
+        {
+          const reviewGateResult = checkReviewGateInline(repo, pr_number, headSha);
+          if (!reviewGateResult.allowed) {
+            return JSON.stringify({
+              error: `REFUSED (review gate): ${reviewGateResult.reason}`,
+              repo,
+              pr_number,
+              guidance: reviewGateResult.guidance,
+              pending_reviewers: reviewGateResult.pending || [],
+              denied_by: reviewGateResult.denied || [],
+              needs_manual: reviewGateResult.needs_manual || [],
+              hint: "Multi-agent review is required before merge. " +
+                "Dispatch the listed review agents, wait for all to approve, then retry execute_approved_merge.",
+            });
+          }
+        }
+
         // 4) EXECUTE — all gates passed
         const result = await executePrMerge(repo, pr_number, mergeMethod, doDeleteBranch, ghToken);
 
         if (result.status === "merged") {
           removeFromMergeQueue(repo, pr_number);
           // Notify approver
-          const approverChatId = approval.approved_by_chat_id || {{PARENT_1}}_CHAT_ID_DEFAULT;
+          const approverChatId = approval.approved_by_chat_id || HECTOR_CHAT_ID_DEFAULT;
           await telegramApi("sendMessage", {
             chat_id: approverChatId,
             text:
