@@ -1,0 +1,92 @@
+name: Enforce dev_get_pr_details tool for PR information
+description: >
+  Blocks PowerShell commands that scrape PR details (gh pr view, gh api /pulls,
+  gh pr checks, gh pr status) and redirects agents to use the dev_get_pr_details
+  tool instead. One tool call gives all PR info: title, body, comments, CI status,
+  Vercel preview URL, deployment state, linked issues, reviews.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [powershell]
+blocking: true
+env:
+  COMMAND_JSON: ${{ toJSON(event.tool.args.command) }}
+steps:
+  - name: Block PowerShell PR detail scraping
+    run: |
+      $cmd = ''
+      if (-not [string]::IsNullOrWhiteSpace($env:COMMAND_JSON)) {
+        try { $cmd = $env:COMMAND_JSON | ConvertFrom-Json } catch { $cmd = $env:COMMAND_JSON }
+      }
+      if ([string]::IsNullOrWhiteSpace($cmd)) {
+        Write-Host 'No command; skipping.'
+        exit 0
+      }
+
+      $blocked = $false
+      $reason = ''
+
+      # Block gh pr view (gets PR details via CLI)
+      if ($cmd -imatch '\bgh\s+pr\s+view\b') {
+        $blocked = $true
+        $reason = 'gh pr view'
+      }
+
+      # Block gh pr checks (gets CI/check status)
+      if ($cmd -imatch '\bgh\s+pr\s+checks\b') {
+        $blocked = $true
+        $reason = 'gh pr checks'
+      }
+
+      # Block gh pr status
+      if ($cmd -imatch '\bgh\s+pr\s+status\b') {
+        $blocked = $true
+        $reason = 'gh pr status'
+      }
+
+      # Block gh api calls to /pulls/{N} endpoint (REST API PR detail fetching)
+      if (($cmd -imatch '\bgh\s+api\b') -and ($cmd -imatch '/pulls/\d+')) {
+        $blocked = $true
+        $reason = 'gh api /pulls/N'
+      }
+
+      # Block gh api calls to repos/*/pulls (listing or fetching PRs)
+      if (($cmd -imatch '\bgh\s+api\b') -and ($cmd -imatch 'repos/.+/pulls')) {
+        $blocked = $true
+        $reason = 'gh api repos/*/pulls'
+      }
+
+      # Block gh api calls to check-runs or statuses (CI status scraping)
+      if (($cmd -imatch '\bgh\s+api\b') -and ($cmd -imatch 'check-runs|commit.*status')) {
+        $blocked = $true
+        $reason = 'gh api check-runs/statuses'
+      }
+
+      # Block gh api calls to deployments (Vercel status scraping)
+      if (($cmd -imatch '\bgh\s+api\b') -and ($cmd -imatch '/deployments')) {
+        $blocked = $true
+        $reason = 'gh api /deployments'
+      }
+
+      if ($blocked) {
+        $lines = @(
+          "BLOCKED: $reason is not allowed for fetching PR details.",
+          "",
+          "Use the dev_get_pr_details tool instead. It returns EVERYTHING in one call:",
+          "  - Title, description, state, author, branch, labels",
+          "  - All comments (with authors)",
+          "  - CI/check status (pass/fail/pending for each check)",
+          "  - Vercel preview URL and deployment state",
+          "  - Linked issues",
+          "  - Review status (approved/changes_requested/pending)",
+          "",
+          "Usage: dev_get_pr_details(repo: 'owner/repo', pr_number: 123)",
+          "",
+          "One tool call replaces 5+ PowerShell commands. Use it."
+        )
+        Write-Error ($lines -join "`n")
+        exit 1
+      }
+
+      Write-Host 'Not a PR detail command; allowed.'
+      exit 0

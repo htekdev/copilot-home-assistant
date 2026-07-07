@@ -1,0 +1,100 @@
+name: Warn future date in agent memory
+description: >
+  Advisory after dev_commit or dev_push when agent memory files (working.md, core.md,
+  events.log) are committed with a "Last Updated" timestamp more than 24 hours in the
+  future. Catches agent date-confusion bugs where agents write wrong year/month by
+  guessing from context rather than reading <current_datetime>. Q-065 pattern —
+  5 confirmed incidents before this hookflow was created (2026-06-27).
+on:
+  hooks:
+    types: [postToolUse]
+    tools: [dev_commit, dev_push]
+blocking: false
+env:
+  FOLDER_ARG: ${{ toJSON(event.tool.args.folder) }}
+steps:
+  - name: Check for future-dated Last Updated timestamps in agent memory files
+    run: |
+      $folder = $env:FOLDER_ARG | ConvertFrom-Json
+      if ([string]::IsNullOrWhiteSpace($folder)) {
+        $folder = Get-Location
+      }
+
+      $repoRoot = & git -C $folder rev-parse --show-toplevel 2>&1
+      if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($repoRoot)) {
+        Write-Host 'Could not resolve git root; skipping date check.'
+        exit 0
+      }
+
+      # Get list of committed files
+      $changedFiles = & git -C $repoRoot show --name-only --pretty=format: HEAD 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host 'Could not retrieve last commit file list; skipping.'
+        exit 0
+      }
+
+      # Filter to agent memory files
+      $memoryFiles = @()
+      foreach ($file in $changedFiles) {
+        if ([string]::IsNullOrWhiteSpace($file)) { continue }
+        if ($file -match 'data[/\\]agents[/\\].*\.(md|log)$') {
+          $memoryFiles += $file
+        }
+      }
+
+      if ($memoryFiles.Count -eq 0) {
+        Write-Host 'No agent memory files in this commit; skipping date check.'
+        exit 0
+      }
+
+      $now = Get-Date
+      $cutoff = $now.AddHours(24)
+      $issues = @()
+
+      foreach ($file in $memoryFiles) {
+        $fullPath = Join-Path $repoRoot $file
+        if (-not (Test-Path $fullPath)) { continue }
+
+        $content = Get-Content $fullPath -Raw -Encoding UTF8 -ErrorAction SilentlyContinue
+        if ([string]::IsNullOrWhiteSpace($content)) { continue }
+
+        # Find "Last Updated" lines with ISO dates
+        $matches = [regex]::Matches($content, '(?m)^##? Last Updated\s*\n?(20\d{2}-\d{2}-\d{2}[T\d:+-]*)')
+        foreach ($m in $matches) {
+          $dateStr = $m.Groups[1].Value -replace 'T.*', ''
+          try {
+            $fileDate = [datetime]::ParseExact($dateStr, 'yyyy-MM-dd', $null)
+            if ($fileDate -gt $cutoff) {
+              $issues += "  [DATE CONFUSION] $file — 'Last Updated: $dateStr' is $(($fileDate - $now).Days) days in the future (current: $($now.ToString('yyyy-MM-dd')))"
+            }
+          } catch {
+            # Unparseable date — skip
+          }
+        }
+
+        # Also check inline date patterns in first 200 chars of content
+        $header = $content.Substring(0, [Math]::Min(200, $content.Length))
+        $inlineMatches = [regex]::Matches($header, '20\d{2}-\d{2}-\d{2}')
+        foreach ($m in $inlineMatches) {
+          $dateStr = $m.Value
+          try {
+            $fileDate = [datetime]::ParseExact($dateStr, 'yyyy-MM-dd', $null)
+            if ($fileDate -gt $cutoff -and -not ($issues -join '' | Select-String -Pattern $file -Quiet)) {
+              $issues += "  [DATE CONFUSION] $file — header contains future date '$dateStr' (current: $($now.ToString('yyyy-MM-dd')))"
+            }
+          } catch {}
+        }
+      }
+
+      if ($issues.Count -gt 0) {
+        $issueList = $issues -join "`n"
+        $msg = "AGENT DATE CONFUSION DETECTED (Q-065 pattern)`n`n"
+        $msg += "One or more agent memory files have future-dated timestamps:`n$issueList`n`n"
+        $msg += "ROOT CAUSE: Agent used context clues to guess the date instead of reading <current_datetime>.`n"
+        $msg += "FIX: Update the 'Last Updated' line to today's date ($($now.ToString('yyyy-MM-dd'))) before pushing."
+        Write-Warning $msg
+      } else {
+        Write-Host "Date check passed — no future timestamps detected in $(${memoryFiles}.Count) agent memory file(s)."
+      }
+
+      exit 0
