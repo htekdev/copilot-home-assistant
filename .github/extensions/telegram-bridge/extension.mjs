@@ -1,5 +1,5 @@
 /**
- * Telegram Bridge Extension for {{PRODUCT}} CLI
+ * Telegram Bridge Extension for GitHub Copilot CLI
  *
  * Bridges Telegram messages <-> Copilot CLI sessions using long polling.
  * - Telegram messages become user prompts in the session.
@@ -126,7 +126,12 @@ const REVIEW_CONFIG_PATH = resolve(process.cwd(), "data", "review-config.json");
 const REVIEW_LEDGER_PATH = resolve(process.cwd(), "data", "review-ledger.json");
 
 function checkReviewGateInline(repo, prNumber, currentHeadSha) {
-  // Load config
+  // PR review gate globally DISABLED per Hector directive (2026-07-04).
+  // "Lets disable pr code review process... it doesn't seem to be doing is any good right now"
+  // To re-enable: remove this early return.
+  return { allowed: true, reason: "review_gate_disabled" };
+
+  // eslint-disable-next-line no-unreachable
   let config;
   try {
     if (!existsSync(REVIEW_CONFIG_PATH)) return { allowed: true, reason: "no_config_file" };
@@ -181,8 +186,8 @@ function checkReviewGateInline(repo, prNumber, currentHeadSha) {
   if (entry.fix_cycle_count >= maxCycles) {
     return {
       allowed: false,
-      reason: `Max fix cycles (${maxCycles}) reached. Requires {{PARENT_1}}'s manual review.`,
-      guidance: "Escalate to {{PARENT_1}} — the fix loop has not converged.",
+      reason: `Max fix cycles (${maxCycles}) reached. Requires Hector's manual review.`,
+      guidance: "Escalate to Hector — the fix loop has not converged.",
       pending: [],
       denied: entry.blockers || [],
     };
@@ -213,7 +218,7 @@ function checkReviewGateInline(repo, prNumber, currentHeadSha) {
     let guidance;
     if (missing.length > 0) guidance = `Dispatch these agents to review: ${missing.join(", ")}`;
     else if (denied.length > 0) guidance = "Address deny feedback (use get_review_status), push fixes, then re-request review.";
-    else guidance = "Wait for {{PARENT_1}} to manually review flagged items.";
+    else guidance = "Wait for Hector to manually review flagged items.";
 
     return {
       allowed: false,
@@ -232,7 +237,7 @@ function checkReviewGateInline(repo, prNumber, currentHeadSha) {
 // ---------------------------------------------------------------------------
 // PR Merge Approval System
 // Agents call merge_pr(repo, pr_number, description) → Telegram inline keyboard
-// → {{PARENT_1}} taps ✅/❌ → deterministic merge or denial
+// → Hector taps ✅/❌ → deterministic merge or denial
 // ---------------------------------------------------------------------------
 
 /** In-memory pending approval requests: requestId → { resolve, msgText, messageId } */
@@ -247,9 +252,9 @@ const renewalTimers = new Map();
  */
 const MAX_APPROVAL_RENEWALS = 24;
 
-const HECTOR_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_1}}";
-const PAULA_CHAT_ID_DEFAULT = "{{TELEGRAM_PARENT_2}}";
-const SOFIA_CHAT_ID = "{{TELEGRAM_CAREGIVER}}";
+const HECTOR_CHAT_ID_DEFAULT = "{{PHONE_NUMBER}}";
+const PAULA_CHAT_ID_DEFAULT = "{{PHONE_NUMBER}}";
+const SOFIA_CHAT_ID = "{{PHONE_NUMBER}}";
 const PR_MERGE_CONFIG_PATH = resolve(process.cwd(), "data", "pr-merge-config.json");
 const USER_SCOPES_PATH = resolve(process.cwd(), "data", "telegram-user-scopes.json");
 const MERGE_QUEUE_PATH = resolve(process.cwd(), "data", "merge-queue.json");
@@ -259,7 +264,7 @@ const MERGE_QUEUE_PATH = resolve(process.cwd(), "data", "merge-queue.json");
 //
 // When a PR is approved for "🤖 Agent Merge", we record the approval here
 // (persisted to data/merge-queue.json). The approval persists across rebases
-// because it is tied to the PR, not the commit SHA — {{PARENT_1}} approves intent,
+// because it is tied to the PR, not the commit SHA — Hector approves intent,
 // not bytes. The merge-agent later reads this ledger and merges each PR via
 // the execute_approved_merge tool, which re-validates CI/conflicts/state.
 // ---------------------------------------------------------------------------
@@ -325,7 +330,7 @@ function findInMergeQueue(repo, prNumber) {
 async function postPrApprovalComment(repo, prNumber, approverLabel, ghToken) {
   const body =
     `✅ **Approved by ${approverLabel} for agent merge** at ${new Date().toISOString()}\n\n` +
-    `_The {{FAMILY_NAME}} merge-agent will rebase this PR onto the latest main, wait for CI, ` +
+    `_The Rocha merge-agent will rebase this PR onto the latest main, wait for CI, ` +
     `and merge when green. This approval persists across rebases._`;
   try {
     const res = await ghRestMerge(
@@ -412,9 +417,9 @@ function resolveApproverChatId(config, explicitApproverChatId, repo) {
 
 function describeApprover(chatId) {
   const normalized = String(chatId || "");
-  if (normalized === HECTOR_CHAT_ID_DEFAULT) return "{{PARENT_1}}";
-  if (normalized === PAULA_CHAT_ID_DEFAULT) return "{{PARENT_2}}";
-  if (normalized === SOFIA_CHAT_ID) return "{{CAREGIVER_NAME}}";
+  if (normalized === HECTOR_CHAT_ID_DEFAULT) return "Hector";
+  if (normalized === PAULA_CHAT_ID_DEFAULT) return "Paula";
+  if (normalized === SOFIA_CHAT_ID) return "Sofia";
   return `chat ${normalized}`;
 }
 
@@ -429,14 +434,14 @@ function generateRequestId() {
  * Schedule an auto-renewal timer for a pending approval request.
  *
  * When the timer fires and the request is still pending:
- *   1. Checks whether the underlying PR(s) are still open via {{EMPLOYER_PARENT}} API.
+ *   1. Checks whether the underlying PR(s) are still open via GitHub API.
  *   2. If all PRs are closed/merged → silently removes the request (no spam).
  *   3. If at least one PR is still open AND renewalCount < MAX_APPROVAL_RENEWALS →
  *      deletes the old entry, sends a fresh Telegram message with new buttons,
  *      stores the new entry, and schedules another renewal.
  *   4. After MAX_APPROVAL_RENEWALS (24 h) → truly expires without re-sending.
  *
- * This means {{PARENT_1}} always has a recent, tappable approval button available,
+ * This means Hector always has a recent, tappable approval button available,
  * even if he was busy for several hours.
  */
 function cancelApprovalRenewal(requestId) {
@@ -502,7 +507,7 @@ function scheduleApprovalRenewal(requestId, timeoutSeconds) {
           `<i>${renewLabel}</i>\n\n` +
           `Approve this merge?`;
 
-        const shortRepo = pending.repo.replace("{{GITHUB_USERNAME}}/", "");
+        const shortRepo = pending.repo.replace("htekdev/", "");
         const keyboard = {
           inline_keyboard: [[
             { text: "✅ Merge Now",   callback_data: `mpr:a:${pending.prNumber}:${shortRepo}` },
@@ -642,7 +647,7 @@ async function ghRestMerge(path, ghToken, options = {}) {
 
 /**
  * Check CI / deployment status for a PR's head commit.
- * Inspects both {{EMPLOYER_PARENT}} Check Runs (Actions, Vercel-as-check) and legacy
+ * Inspects both GitHub Check Runs (Actions, Vercel-as-check) and legacy
  * commit Statuses (Vercel deployments often appear here as state=error).
  *
  * Returns:
@@ -659,7 +664,7 @@ async function checkPrCiStatus(repo, sha, ghToken) {
   let totalChecks = 0;
   let pendingChecks = 0;
 
-  // 1) Check Runs (modern {{EMPLOYER_PARENT}} Checks API — Actions, Vercel, most integrations)
+  // 1) Check Runs (modern GitHub Checks API — Actions, Vercel, most integrations)
   try {
     const cr = await ghRestMerge(`/repos/${repo}/commits/${sha}/check-runs?per_page=100`, ghToken);
     if (cr.ok && Array.isArray(cr.data?.check_runs)) {
@@ -817,7 +822,7 @@ async function handleApprovalCallback(callbackQuery) {
   // ── Direct path: mpr format (no pending Promise needed) ──────────────────
   if (matchDirect) {
     const [, act, prNumStr, shortRepo] = matchDirect;
-    const fullRepo = shortRepo.includes("/") ? shortRepo : `{{GITHUB_USERNAME}}/${shortRepo}`;
+    const fullRepo = shortRepo.includes("/") ? shortRepo : `htekdev/${shortRepo}`;
     const prNum = parseInt(prNumStr, 10);
     const emoji = act === "a" ? "✅" : act === "ag" ? "🤖" : "❌";
     const label = act === "a" ? "Approved" : act === "ag" ? "Agent Merge Queued" : "Denied";
@@ -837,13 +842,13 @@ async function handleApprovalCallback(callbackQuery) {
     }).catch(() => {});
 
     if (act === "a") {
-      // Execute the merge directly via {{EMPLOYER_PARENT}} API
+      // Execute the merge directly via GitHub API
       try {
         const ghToken = getGhToken();
         if (!ghToken) {
           await telegramApi("sendMessage", {
             chat_id: chatId,
-            text: `⚠️ Cannot merge ${fullRepo}#${prNum} — no {{EMPLOYER_PARENT}} token available.`,
+            text: `⚠️ Cannot merge ${fullRepo}#${prNum} — no GitHub token available.`,
             parse_mode: "HTML",
           });
           return;
@@ -867,7 +872,7 @@ async function handleApprovalCallback(callbackQuery) {
           // Notify the session so the agent can handle post-merge tasks
           if (_sessionRef) {
             queueOrSend(_sessionRef, {
-              prompt: `[PR Merged]: ${fullRepo}#${prNum} "${result.pr_title || ""}" was merged (${mergeMethod}) after {{PARENT_1}}'s approval. Branch ${result.head_branch || ""} ${result.branch_deleted ? "was deleted" : "still exists"}. Handle any post-merge tasks: trigger article-promoter if blog article, update issues, notify relevant agents, etc.`,
+              prompt: `[PR Merged]: ${fullRepo}#${prNum} "${result.pr_title || ""}" was merged (${mergeMethod}) after Hector's approval. Branch ${result.head_branch || ""} ${result.branch_deleted ? "was deleted" : "still exists"}. Handle any post-merge tasks: trigger article-promoter if blog article, update issues, notify relevant agents, etc.`,
               mode: "immediate",
             }, chatId);
           }
@@ -879,7 +884,7 @@ async function handleApprovalCallback(callbackQuery) {
           });
         }
       } catch (mergeErr) {
-        // Ensure {{PARENT_1}} always gets feedback even if something crashes
+        // Ensure Hector always gets feedback even if something crashes
         await telegramApi("sendMessage", {
           chat_id: chatId,
           text: `⚠️ Error during merge of ${fullRepo}#${prNum}: ${mergeErr.message || "Unknown error"}`,
@@ -890,7 +895,7 @@ async function handleApprovalCallback(callbackQuery) {
       // Agent Merge path (stateless) — record durable approval + dispatch merge-agent
       try {
         const ghToken = getGhToken();
-        const approverName = callbackQuery.from?.first_name || "{{PARENT_1}}";
+        const approverName = callbackQuery.from?.first_name || "Hector";
         const approvalEntry = {
           repo: fullRepo,
           pr_number: prNum,
@@ -946,7 +951,7 @@ async function handleApprovalCallback(callbackQuery) {
   const approverChatId = String(pending?.approverChatId || config.defaults?.approver_chat_id || HECTOR_CHAT_ID_DEFAULT);
 
   // Also re-derive the approver from config rules for the repo.
-  // Ensures repo-specific approvers (e.g. {{CAREGIVER_NAME}} for taller-mecanico) can always act
+  // Ensures repo-specific approvers (e.g. Sofia for taller-mecanico) can always act
   // even if pending.approverChatId was stored without full repo context or the calling
   // agent didn't pass an explicit approver_chat_id.
   const configApproverChatId = pending?.repo
@@ -1067,7 +1072,7 @@ async function handleApprovalCallback(callbackQuery) {
         if (!ghToken) {
           await telegramApi("sendMessage", {
             chat_id: chatId,
-            text: `⚠️ Cannot merge ${pending.repo}#${pending.prNumber} — no {{EMPLOYER_PARENT}} token available.`,
+            text: `⚠️ Cannot merge ${pending.repo}#${pending.prNumber} — no GitHub token available.`,
             parse_mode: "HTML",
           });
           return;
@@ -1547,7 +1552,7 @@ let _deadSessionCount = 0; // Track consecutive dead-session failures
 const MAX_DEAD_SESSION_BEFORE_EXIT = 3; // Self-terminate after this many
 
 function queueOrSend(session, options, chatId) {
-  // Always send immediately — queue disabled per {{PARENT_1}} (2026-05-20)
+  // Always send immediately — queue disabled per Hector (2026-05-20)
   //
   // Resilient against:
   //  - `session` or `session.send` missing/null (e.g., extension loaded in a
@@ -1632,8 +1637,98 @@ function queueOrSend(session, options, chatId) {
   }
 }
 
-// flushOne() — DISABLED per {{PARENT_1}} (2026-05-20) — queue system removed
+// flushOne() — DISABLED per Hector (2026-05-20) — queue system removed
 // function flushOne() { ... }
+
+// ---------------------------------------------------------------------------
+// Inline dispatch prompt builder
+// Composes the FULL delegation prompt upfront so we don't rely on the
+// onUserPromptSubmitted hook (which was unreliable). The hook is now a no-op
+// for Telegram messages.
+// ---------------------------------------------------------------------------
+function buildDispatchPrompt(from, userId, userMessage) {
+  const now = new Date();
+  const localTime = now.toLocaleString("en-US", {
+    timeZone: "America/Chicago",
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  // Per-user agent scoping
+  const userScope = getUserScope(userId);
+  if (userScope && userScope.allowed_agents?.length > 0) {
+    const allowedList = userScope.allowed_agents.join(", ");
+    const outOfScopeReply = userScope.out_of_scope_reply ||
+      `I can only help with ${userScope.scope_label || allowedList}. For other requests, please contact Hector.`;
+    return (
+      `[Telegram from ${from} (user ${userId})]: "${userMessage}"\n\n` +
+      `Current time: ${localTime} (Central Time).\n` +
+      `Sender identity: ${userScope.display_name || userScope.name} — ${userScope.role}.\n\n` +
+      `⚠️ STRICT SCOPE RESTRICTION — THIS USER IS SCOPED ONLY TO: ${allowedList}\n` +
+      `This user MUST NOT receive any information about family, finance, health, NICU, meals, calendar, or any other domain.\n` +
+      `If the request is NOT about ${userScope.scope_label || allowedList}, respond immediately via telegram_send_message(chat_id: "${userId}", message: "${outOfScopeReply}") and STOP — do NOT delegate anywhere else.\n\n` +
+      `MANDATORY: You MUST delegate this to the ${allowedList} agent ONLY.\n\n` +
+      `## STEP 0: STEER vs LAUNCH DECISION (check BEFORE delegating)\n` +
+      `Call list_agents() first to see IDLE/RUNNING background agents.\n` +
+      `Then decide:\n\n` +
+      `**STEER an existing agent (write_agent) WHEN ALL of these are true:**\n` +
+      `- An IDLE ${allowedList} agent exists that was working on a RELATED topic\n` +
+      `- The new message is a FOLLOW-UP (correcting, clarifying, adding to, or continuing a prior discussion)\n` +
+      `- The existing agent has CONTEXT that would be LOST by launching fresh\n` +
+      `→ Use write_agent(agent_id, message) to inject the follow-up.\n\n` +
+      `**LAUNCH a NEW agent (task tool) WHEN ANY of these are true:**\n` +
+      `- The message is a NEW topic\n` +
+      `- No relevant idle agent exists\n` +
+      `- You're unsure → LAUNCH NEW (safer)\n\n` +
+      `## STEP 1: Execute\n` +
+      `- Delegate ONLY to agent_type: "${userScope.allowed_agents[0]}"\n` +
+      `- The agent responds via telegram_send_message (chat_id: "${userId}")\n` +
+      `- Remind the agent: Sofia is the product owner of Taller Mecánico. She can request features, review Vercel previews, and approve PR merges. When she requests changes → create branch → implement → PR → send her the Vercel preview URL via Telegram (chat_id: ${userId}) → request her approval via merge_pr with approver_chat_id: "${userId}".\n\n` +
+      `## STEP 2: Acknowledge & continue\n` +
+      `- Do not wait for agent results. Dispatch and continue.`
+    );
+  }
+
+  // Default: full dispatch instructions for non-scoped users
+  return (
+    `[Telegram from ${from} (user ${userId})]: "${userMessage}"\n\n` +
+    `Current time: ${localTime} (Central Time).\n` +
+    `MANDATORY: You MUST delegate this to background agent(s). Do NOT handle this inline.\n\n` +
+    `## STEP 0: STEER vs LAUNCH DECISION (check BEFORE delegating)\n` +
+    `Call list_agents() first to see IDLE/RUNNING background agents.\n` +
+    `Then decide for EACH distinct task in the message:\n\n` +
+    `**STEER an existing agent (write_agent) WHEN ALL of these are true:**\n` +
+    `- An IDLE agent exists that was working on a RELATED topic (same domain, same conversation thread)\n` +
+    `- The new message is a FOLLOW-UP — correcting, clarifying, adding to, or continuing a prior discussion\n` +
+    `  (e.g., "No, the Savor is the subscription card", "also add milk", "what about the other one?")\n` +
+    `- The existing agent has CONTEXT that would be LOST by launching fresh (names, decisions, partial work)\n` +
+    `- The task is in the SAME domain as what that agent was doing\n` +
+    `→ Use write_agent(agent_id, message) to inject the follow-up. The agent wakes up with full prior context.\n\n` +
+    `**LAUNCH a NEW agent (task tool) WHEN ANY of these are true:**\n` +
+    `- The message is a NEW topic unrelated to any running/idle agent's context\n` +
+    `- No idle agents exist, or none have relevant context\n` +
+    `- High-quality results are needed with NO dependency on prior context (fresh analysis, clean slate)\n` +
+    `- The message is clearly a standalone request (e.g., "what's the weather?", "add eggs to the list")\n` +
+    `- You're unsure whether to steer or launch → LAUNCH NEW (safer — clean context never hurts)\n\n` +
+    `## STEP 1: Analyze the message\n` +
+    `- Identify how many distinct tasks/requests it contains\n` +
+    `- For EACH task, apply the steer-vs-launch decision above\n\n` +
+    `## STEP 2: Execute\n` +
+    `- For follow-ups → write_agent to the relevant idle agent\n` +
+    `- For new requests → launch via task tool (pick the best custom agent_type, or general-purpose if none fits)\n` +
+    `- If MULTIPLE independent new requests, launch MULTIPLE agents in parallel\n` +
+    `- Each agent responds via telegram_send_message (chat_id: "${userId}")\n` +
+    `- When writing the agent prompt, remind it to CHECK and USE available skills (.github/skills/) relevant to the task. Skills contain domain-specific procedures that improve quality and consistency.\n\n` +
+    `## STEP 3: Acknowledge & continue\n` +
+    `- You only send a Telegram yourself for trivial acknowledgments (e.g., "goodnight", "thanks")\n` +
+    `- Continue immediately after dispatching — do not wait for results.`
+  );
+}
 
 async function skipOldUpdates() {
   try {
@@ -1800,7 +1895,7 @@ async function pollLoop(session) {
           await sendTelegramMessage(
             chatId,
             `Connected! Your chat ID is: ${chatId}\n\n` +
-              `Send any message and it will be forwarded to your {{PRODUCT}} CLI session.\n\n` +
+              `Send any message and it will be forwarded to your GitHub Copilot CLI session.\n\n` +
               `Commands:\n/status — check bridge status\n/help — show this message`
           );
           continue;
@@ -1840,7 +1935,7 @@ async function pollLoop(session) {
 
           // Session-aware queue: hold locally when busy, send when idle
           queueOrSend(session, {
-            prompt: `[Telegram from ${from} (user ${userId})]: ${msg.text}`,
+            prompt: buildDispatchPrompt(from, userId, msg.text),
             mode: "immediate",
           }, chatId);
           continue;
@@ -1894,7 +1989,7 @@ async function pollLoop(session) {
                 const imgAbsPath = resolve(imgLocalPath);
 
                 queueOrSend(session, {
-                  prompt: `[Telegram from ${from} (user ${userId})]: ${caption}\n[Image saved to: ${imgAbsPath}]`,
+                  prompt: buildDispatchPrompt(from, userId, `${caption}\n[Image saved to: ${imgAbsPath}]`),
                   mode: "immediate",
                   attachments: [
                     {
@@ -1997,7 +2092,7 @@ async function pollLoop(session) {
                 } catch { /* non-fatal */ }
 
                 queueOrSend(session, {
-                  prompt: `[Telegram from ${from} (user ${userId})]: ${transcript}`,
+                  prompt: buildDispatchPrompt(from, userId, transcript),
                   mode: "immediate",
                 }, chatId);
               } catch (err) {
@@ -2061,7 +2156,7 @@ async function pollLoop(session) {
 
                     const captionPart = caption ? ` Caption: "${caption}".` : "";
                     queueOrSend(session, {
-                      prompt: `[Telegram from ${from} (user ${userId})]: Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`,
+                      prompt: buildDispatchPrompt(from, userId, `Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`),
                       mode: "immediate",
                     }, chatId);
                   } catch (err) {
@@ -2073,7 +2168,7 @@ async function pollLoop(session) {
                     );
                     const captionPart = caption ? ` Caption: "${caption}".` : "";
                     queueOrSend(session, {
-                      prompt: `[Telegram from ${from} (user ${userId})]: Sent a video (${fileSizeMB}MB) but MTProto download failed: ${err.message}.${captionPart} The user has been asked to share the file path instead.`,
+                      prompt: buildDispatchPrompt(from, userId, `Sent a video (${fileSizeMB}MB) but MTProto download failed: ${err.message}.${captionPart} The user has been asked to share the file path instead.`),
                       mode: "immediate",
                     }, chatId);
                   }
@@ -2097,7 +2192,7 @@ async function pollLoop(session) {
               // Still forward the caption/intent to the session so the agent knows what the user wants
               const captionPart = caption ? ` Caption: "${caption}".` : "";
               queueOrSend(session, {
-                prompt: `[Telegram from ${from} (user ${userId})]: Sent a video (${fileSizeMB}MB) but it exceeds the Telegram Bot API ${limitMB}MB download limit.${captionPart} The user has been asked to share the file path instead. Wait for them to provide a local file path.`,
+                prompt: buildDispatchPrompt(from, userId, `Sent a video (${fileSizeMB}MB) but it exceeds the Telegram Bot API ${limitMB}MB download limit.${captionPart} The user has been asked to share the file path instead. Wait for them to provide a local file path.`),
                 mode: "immediate",
               }, chatId);
               continue;
@@ -2131,7 +2226,7 @@ async function pollLoop(session) {
                 // Build prompt with summary as context (like voice transcriptions)
                 const captionPart = caption ? ` Caption: "${caption}".` : "";
                 queueOrSend(session, {
-                  prompt: `[Telegram from ${from} (user ${userId})]: Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`,
+                  prompt: buildDispatchPrompt(from, userId, `Sent a video.${captionPart} [Video summary: ${summary}] The video file is at ${videoFile}.`),
                   mode: "immediate",
                 }, chatId);
               } catch (err) {
@@ -2146,7 +2241,7 @@ async function pollLoop(session) {
                   );
                   const captionPart = caption ? ` Caption: "${caption}".` : "";
                   queueOrSend(session, {
-                    prompt: `[Telegram from ${from} (user ${userId})]: Sent a video but it exceeds the Telegram Bot API 20MB download limit.${captionPart} The user has been asked to share the file path instead.`,
+                    prompt: buildDispatchPrompt(from, userId, `Sent a video but it exceeds the Telegram Bot API 20MB download limit.${captionPart} The user has been asked to share the file path instead.`),
                     mode: "immediate",
                   }, chatId);
                 } else {
@@ -2179,7 +2274,7 @@ async function pollLoop(session) {
               );
               const captionPart = caption ? ` Caption: "${caption}".` : "";
               queueOrSend(session, {
-                prompt: `[Telegram from ${from} (user ${userId})]: Sent a file "${origName}" (${mimeType}, ${fileSizeMB}MB) but it exceeds the Telegram Bot API ${limitMB}MB download limit.${captionPart} The user has been asked to share the file path instead.`,
+                prompt: buildDispatchPrompt(from, userId, `Sent a file "${origName}" (${mimeType}, ${fileSizeMB}MB) but it exceeds the Telegram Bot API ${limitMB}MB download limit.${captionPart} The user has been asked to share the file path instead.`),
                 mode: "immediate",
               }, chatId);
               continue;
@@ -2214,7 +2309,7 @@ async function pollLoop(session) {
 
                 const captionPart = caption ? ` Caption: "${caption}".` : "";
                 queueOrSend(session, {
-                  prompt: `[Telegram from ${from} (user ${userId})]:${captionPart}\n[File received: ${origName || doc.file_id} (${mimeType}, ${fileSize} bytes)]\n[File saved to: ${fileAbsPath}]`,
+                  prompt: buildDispatchPrompt(from, userId, `${captionPart}\n[File received: ${origName || doc.file_id} (${mimeType}, ${fileSize} bytes)]\n[File saved to: ${fileAbsPath}]`),
                   mode: "immediate",
                 }, chatId);
               } catch (err) {
@@ -2304,101 +2399,11 @@ const session = await joinSession({
     },
 
     onUserPromptSubmitted: async (input) => {
-      const prompt = input.prompt || "";
-      // Only apply to Telegram messages, not cron jobs (those already delegate)
-      if (!prompt.startsWith("[Telegram from")) return;
-
-      // Extract the user ID and message from the prompt
-      const userMatch = prompt.match(/\[Telegram from (.+?) \(user (\d+)\)\]: (.+)/s);
-      if (!userMatch) return;
-      const [, senderName, senderId, userMessage] = userMatch;
-
-      // Get current local time in Central timezone
-      const now = new Date();
-      const localTime = now.toLocaleString("en-US", {
-        timeZone: "{{TIMEZONE}}",
-        weekday: "long",
-        year: "numeric",
-        month: "long",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-        hour12: true,
-      });
-
-      // ── Per-user agent scoping ──────────────────────────────────────────
-      // If this sender has a scope restriction, ONLY dispatch to their allowed agents.
-      const userScope = getUserScope(senderId);
-      if (userScope && userScope.allowed_agents?.length > 0) {
-        const allowedList = userScope.allowed_agents.join(", ");
-        const outOfScopeReply = userScope.out_of_scope_reply ||
-          `I can only help with ${userScope.scope_label || allowedList}. For other requests, please contact {{PARENT_1}}.`;
-        return {
-          modifiedPrompt:
-            `[Telegram from ${senderName} (user ${senderId})]: "${userMessage}"\n\n` +
-            `Current time: ${localTime} (Central Time).\n` +
-            `Sender identity: ${userScope.display_name || userScope.name} — ${userScope.role}.\n\n` +
-            `⚠️ STRICT SCOPE RESTRICTION — THIS USER IS SCOPED ONLY TO: ${allowedList}\n` +
-            `This user MUST NOT receive any information about family, finance, health, NICU, meals, calendar, or any other domain.\n` +
-            `If the request is NOT about ${userScope.scope_label || allowedList}, respond immediately via telegram_send_message(chat_id: "${senderId}", message: "${outOfScopeReply}") and STOP — do NOT delegate anywhere else.\n\n` +
-            `MANDATORY: You MUST delegate this to the ${allowedList} agent ONLY.\n\n` +
-            `## STEP 0: STEER vs LAUNCH DECISION (check BEFORE delegating)\n` +
-            `Call list_agents() first to see IDLE/RUNNING background agents.\n` +
-            `Then decide:\n\n` +
-            `**STEER an existing agent (write_agent) WHEN ALL of these are true:**\n` +
-            `- An IDLE ${allowedList} agent exists that was working on a RELATED topic\n` +
-            `- The new message is a FOLLOW-UP (correcting, clarifying, adding to, or continuing a prior discussion)\n` +
-            `- The existing agent has CONTEXT that would be LOST by launching fresh\n` +
-            `→ Use write_agent(agent_id, message) to inject the follow-up.\n\n` +
-            `**LAUNCH a NEW agent (task tool) WHEN ANY of these are true:**\n` +
-            `- The message is a NEW topic\n` +
-            `- No relevant idle agent exists\n` +
-            `- You're unsure → LAUNCH NEW (safer)\n\n` +
-            `## STEP 1: Execute\n` +
-            `- Delegate ONLY to agent_type: "${userScope.allowed_agents[0]}"\n` +
-            `- The agent responds via telegram_send_message (chat_id: "${senderId}")\n` +
-            `- Remind the agent: {{CAREGIVER_NAME}} is the product owner of Taller Mecánico. She can request features, review Vercel previews, and approve PR merges. When she requests changes → create branch → implement → PR → send her the Vercel preview URL via Telegram (chat_id: ${senderId}) → request her approval via merge_pr with approver_chat_id: "${senderId}".\n\n` +
-            `## STEP 2: Acknowledge & continue\n` +
-            `- Do not wait for agent results. Dispatch and continue.`,
-        };
-      }
-      // ── End scoping ──────────────────────────────────────────────────────
-
-      // Smart dispatch — steer existing agents for follow-ups, launch fresh for new topics
-      return {
-        modifiedPrompt:
-          `[Telegram from ${senderName} (user ${senderId})]: "${userMessage}"\n\n` +
-          `Current time: ${localTime} (Central Time).\n` +
-          `MANDATORY: You MUST delegate this to background agent(s). Do NOT handle this inline.\n\n` +
-          `## STEP 0: STEER vs LAUNCH DECISION (check BEFORE delegating)\n` +
-          `Call list_agents() first to see IDLE/RUNNING background agents.\n` +
-          `Then decide for EACH distinct task in the message:\n\n` +
-          `**STEER an existing agent (write_agent) WHEN ALL of these are true:**\n` +
-          `- An IDLE agent exists that was working on a RELATED topic (same domain, same conversation thread)\n` +
-          `- The new message is a FOLLOW-UP — correcting, clarifying, adding to, or continuing a prior discussion\n` +
-          `  (e.g., "No, the Savor is the subscription card", "also add milk", "what about the other one?")\n` +
-          `- The existing agent has CONTEXT that would be LOST by launching fresh (names, decisions, partial work)\n` +
-          `- The task is in the SAME domain as what that agent was doing\n` +
-          `→ Use write_agent(agent_id, message) to inject the follow-up. The agent wakes up with full prior context.\n\n` +
-          `**LAUNCH a NEW agent (task tool) WHEN ANY of these are true:**\n` +
-          `- The message is a NEW topic unrelated to any running/idle agent's context\n` +
-          `- No idle agents exist, or none have relevant context\n` +
-          `- High-quality results are needed with NO dependency on prior context (fresh analysis, clean slate)\n` +
-          `- The message is clearly a standalone request (e.g., "what's the weather?", "add eggs to the list")\n` +
-          `- You're unsure whether to steer or launch → LAUNCH NEW (safer — clean context never hurts)\n\n` +
-          `## STEP 1: Analyze the message\n` +
-          `- Identify how many distinct tasks/requests it contains\n` +
-          `- For EACH task, apply the steer-vs-launch decision above\n\n` +
-          `## STEP 2: Execute\n` +
-          `- For follow-ups → write_agent to the relevant idle agent\n` +
-          `- For new requests → launch via task tool (pick the best custom agent_type, or general-purpose if none fits)\n` +
-          `- If MULTIPLE independent new requests, launch MULTIPLE agents in parallel\n` +
-          `- Each agent responds via telegram_send_message (chat_id: "${senderId}")\n` +
-          `- When writing the agent prompt, remind it to CHECK and USE available skills (.github/skills/) relevant to the task. Skills contain domain-specific procedures that improve quality and consistency.\n\n` +
-          `## STEP 3: Acknowledge & continue\n` +
-          `- You only send a Telegram yourself for trivial acknowledgments (e.g., "goodnight", "thanks")\n` +
-          `- Continue immediately after dispatching — do not wait for results.`,
-      };
+      // NO-OP: Dispatch instructions are now composed inline in buildDispatchPrompt()
+      // at the point where Telegram messages are forwarded to the session.
+      // This hook was unreliable — sometimes the modifiedPrompt didn't get applied.
+      // Kept as a no-op so the hook slot isn't accidentally reused for something else.
+      return;
     },
 
     onSessionEnd: async () => {
@@ -2428,12 +2433,15 @@ const session = await joinSession({
         }
 
         const parts = [];
+        if (agentType) parts.push(agentType);
         if (agentId) parts.push(agentId);
-        else if (agentType) parts.push(agentType);
         if (parts.length > 0) {
           const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
           parts.push(timeStr);
           _pendingFooter = `\n\n— ${parts.join(" | ")}`;
+        } else {
+          // No identity available — explicitly clear to prevent stale cross-agent leakage
+          _pendingFooter = null;
         }
       }
     },
@@ -2463,8 +2471,8 @@ const session = await joinSession({
             description:
               "Short TTS text for Tasker integration (1-2 sentences, no emojis/markdown). " +
               "When provided, 'SPEAK: [text]' is prepended to the message so it appears in notification previews. " +
-              "ALWAYS use this when sending to {{PARENT_1}} ({{TELEGRAM_PARENT_1}}). " +
-              "Do NOT use for {{PARENT_2}} ({{TELEGRAM_PARENT_2}}) — she doesn't use Tasker TTS.",
+              "ALWAYS use this when sending to Hector ({{PHONE_NUMBER}}). " +
+              "Do NOT use for Paula ({{PHONE_NUMBER}}) — she doesn't use Tasker TTS.",
           },
         },
         required: ["message"],
@@ -2492,23 +2500,17 @@ const session = await joinSession({
             finalMessage = `SPEAK: ${args.speak.trim()}\n\n${args.message}`;
           }
 
-          // Agent identity footer — multi-layer approach:
-          // 1. _pendingFooter (set by onPreToolUse if it fires for own tools)
-          // 2. _lastSeenIdentity (set by onPreToolUse for ANY prior tool call)
-          // 3. Fallback: 🤖 header regex in message body
+          // Agent identity footer — two-layer approach:
+          // 1. _pendingFooter (set by onPreToolUse for THIS specific telegram_send_message call)
+          // 2. Fallback: 🤖 header regex in message body
+          // NOTE: _lastSeenIdentity is intentionally NOT used here — it's shared mutable
+          // state from ANY agent's tool call and causes cross-agent footer contamination.
           let footer = null;
           if (_pendingFooter) {
             footer = _pendingFooter;
             _pendingFooter = null;
-          } else if (_lastSeenIdentity && (_lastSeenIdentity.agent_id || _lastSeenIdentity.agent_type)) {
-            const parts = [];
-            if (_lastSeenIdentity.agent_id) parts.push(_lastSeenIdentity.agent_id);
-            else if (_lastSeenIdentity.agent_type) parts.push(_lastSeenIdentity.agent_type);
-            const timeStr = new Date().toLocaleTimeString("en-US", { hour: "2-digit", minute: "2-digit", hour12: false });
-            parts.push(timeStr);
-            footer = `\n\n— ${parts.join(" | ")}`;
           } else {
-            // Last resort: extract agent name from 🤖 header in message body
+            // Fallback: extract agent name from 🤖 header in message body
             const headerMatch = args.message?.match(/^🤖\s+(\S+)/);
             if (headerMatch) {
               const agentName = headerMatch[1];
@@ -2638,20 +2640,20 @@ const session = await joinSession({
       description:
         "Request a PR merge via Telegram inline keyboard approval. " +
         "Sends the configured approver a message with the PR link, description, and ✅ Approve / ❌ Deny buttons. " +
-        "On approval, merges the PR deterministically via {{EMPLOYER_PARENT}} API. " +
+        "On approval, merges the PR deterministically via GitHub API. " +
         "On denial or timeout, returns the decision without merging. " +
         "Pre-flight: verifies PR is open/non-draft/no-conflicts AND that no CI checks " +
-        "or deployments ({{EMPLOYER_PARENT}} Actions, Vercel, etc.) are failing on the head commit. " +
+        "or deployments (GitHub Actions, Vercel, etc.) are failing on the head commit. " +
         "If any check run or commit status is in a failed/errored/cancelled state, " +
         "the merge request is BLOCKED and no approval is sent. " +
         "Approval rules are configured in data/pr-merge-config.json. " +
-        "{{GITHUB_USERNAME}}/* repos always require approval. Use this instead of any direct merge operation.",
+        "htekdev/* repos always require approval. Use this instead of any direct merge operation.",
       parameters: {
         type: "object",
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format, e.g. '{{GITHUB_USERNAME}}/htek-dev-site'.",
+            description: "GitHub repo in owner/repo format, e.g. 'htekdev/htek-dev-site'.",
           },
           pr_number: {
             type: "number",
@@ -2661,7 +2663,7 @@ const session = await joinSession({
             type: "string",
             description:
               "What this PR does and why it should be merged. " +
-              "Shown to {{PARENT_1}} in the approval message. Be concise and specific.",
+              "Shown to Hector in the approval message. Be concise and specific.",
           },
           merge_method: {
             type: "string",
@@ -2691,7 +2693,7 @@ const session = await joinSession({
 
         const ghToken = getGhToken();
         if (!ghToken) {
-          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
+          return JSON.stringify({ error: "No GitHub token found. Set GITHUB_TOKEN in .env." });
         }
 
         const config = loadMergeConfig();
@@ -2699,9 +2701,9 @@ const session = await joinSession({
         const doDeleteBranch = delete_branch !== false && config.defaults?.delete_branch !== false;
         const timeoutSeconds = config.defaults?.timeout_seconds || 3600;
         const approverChatId = resolveApproverChatId(config, approver_chat_id, repo);
-        const approverLabel = approverChatId === HECTOR_CHAT_ID_DEFAULT ? "{{PARENT_1}}"
-          : approverChatId === PAULA_CHAT_ID_DEFAULT ? "{{PARENT_2}}"
-          : approverChatId === SOFIA_CHAT_ID ? "{{CAREGIVER_NAME}}"
+        const approverLabel = approverChatId === HECTOR_CHAT_ID_DEFAULT ? "Hector"
+          : approverChatId === PAULA_CHAT_ID_DEFAULT ? "Paula"
+          : approverChatId === SOFIA_CHAT_ID ? "Sofia"
           : approverChatId;
 
         // ── Pre-check: PR must be open, not a draft, and mergeable ──────────
@@ -2741,7 +2743,7 @@ const session = await joinSession({
               failures: ciStatus.failures,
               hint:
                 "Fix the failing CI builds or deployments (or wait for them to re-run successfully) " +
-                "before requesting merge approval. Approval was NOT sent to {{PARENT_1}}.",
+                "before requesting merge approval. Approval was NOT sent to Hector.",
             });
           }
         }
@@ -2796,7 +2798,7 @@ const session = await joinSession({
         if (!requiresApproval) {
           const result = await executePrMerge(repo, pr_number, mergeMethod, doDeleteBranch, ghToken);
           if (result.status === "merged") {
-           const shortRepo = repo.replace("{{GITHUB_USERNAME}}/", "");
+           const shortRepo = repo.replace("htekdev/", "");
            await telegramApi("sendMessage", {
              chat_id: approverChatId,
              text:
@@ -2810,7 +2812,7 @@ const session = await joinSession({
 
         // ── Approval-required path (non-blocking) ───────────────────────────
         // Send approval buttons and return immediately. The callback handler
-        // (handleApprovalCallback) will execute the merge when {{PARENT_1}} taps ✅.
+        // (handleApprovalCallback) will execute the merge when Hector taps ✅.
         // This avoids blocking the tool execution (which times out in the runtime).
         const requestId = generateRequestId();
         const prUrl = `https://github.com/${repo}/pull/${pr_number}`;
@@ -2845,7 +2847,7 @@ const session = await joinSession({
         // sub-agent process termination, and extension reloads. The in-memory
         // pendingApprovals Map is kept as a secondary optimization (enables renewal
         // timers) but is NOT required for button functionality.
-        const shortRepo = repo.replace("{{GITHUB_USERNAME}}/", "");
+        const shortRepo = repo.replace("htekdev/", "");
         const keyboard = {
           inline_keyboard: [
             [
@@ -2923,7 +2925,7 @@ const session = await joinSession({
         }
         const ghToken = getGhToken();
         if (!ghToken) {
-          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
+          return JSON.stringify({ error: "No GitHub token found. Set GITHUB_TOKEN in .env." });
         }
 
         const config = loadMergeConfig();
@@ -3071,7 +3073,7 @@ const session = await joinSession({
 
         // 1) APPROVAL GATE — must be in the queue, OR repo opts out of human approval
         //    when human_approval_required: false in review-config.json AND all review
-        //    agents have approved in review-ledger.json ({{PARENT_1}} directive 2026-07-01).
+        //    agents have approved in review-ledger.json (Hector directive 2026-07-01).
         let approval = findInMergeQueue(repo, pr_number);
         if (!approval) {
           // Check if this repo is configured for autonomous merge (no human approval required)
@@ -3134,7 +3136,7 @@ const session = await joinSession({
           addToMergeQueue(syntheticApproval);
           approval = syntheticApproval;
 
-          // Log the autonomous merge to Telegram (inform {{PARENT_1}}, don't ask)
+          // Log the autonomous merge to Telegram (inform Hector, don't ask)
           await telegramApi("sendMessage", {
             chat_id: HECTOR_CHAT_ID_DEFAULT,
             text: `🤖 <b>Autonomous merge queued:</b> ${repo}#${pr_number}\n` +
@@ -3145,7 +3147,7 @@ const session = await joinSession({
 
         const ghToken = getGhToken();
         if (!ghToken) {
-          return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
+          return JSON.stringify({ error: "No GitHub token found. Set GITHUB_TOKEN in .env." });
         }
 
         const config = loadMergeConfig();
@@ -3297,17 +3299,18 @@ session.on("user.message", (event) => {
 });
 
 session.on("assistant.message", async (event) => {
-  // Auto-forwarding DISABLED per {{PARENT_1}}'s request (2026-04-12)
+  // Auto-forwarding DISABLED per Hector's request (2026-04-12)
   // Agents use telegram_send_message directly when they need to communicate.
   // This prevents duplicate/noisy messages from every assistant response.
   return;
 });
 
 // ---------------------------------------------------------------------------
-// Queue event listeners — DISABLED per {{PARENT_1}} (2026-05-20) — queue removed
+// Queue event listeners — DISABLED per Hector (2026-05-20) — queue removed
 // Messages now always send immediately via queueOrSend(); no busy tracking needed.
 // ---------------------------------------------------------------------------
 // session.on("assistant.turn_start", () => { agentBusy = true; });
 // session.on("tool.execution_complete", () => { stopTypingIndicator(); agentBusy = false; flushOne(); });
 
 } // end BRIDGE_MODE check
+

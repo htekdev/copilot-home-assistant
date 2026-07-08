@@ -1,5 +1,5 @@
 /**
- * PR Review Extension for {{PRODUCT}} CLI
+ * PR Review Extension for GitHub Copilot CLI
  *
  * Implements the multi-agent code review pipeline:
  * - review_pr tool: lets authorized review agents submit findings
@@ -62,7 +62,7 @@ function saveLedger(ledger) {
   writeFileSync(LEDGER_PATH, JSON.stringify(ledger, null, 2) + "\n", "utf-8");
 }
 
-// ── {{EMPLOYER_PARENT}} REST helper ──────────────────────────────────────────────────────
+// ── GitHub REST helper ──────────────────────────────────────────────────────
 
 function getGhToken() {
   const envPath = resolve(REPO_ROOT, ".env");
@@ -165,7 +165,7 @@ function formatReviewComment(agentName, role, status, summary, findings) {
       lines.push(`- ${f.description}`);
     }
     lines.push("");
-    lines.push("### What {{PARENT_1}} Should Look At");
+    lines.push("### What Hector Should Look At");
     for (const f of findings) {
       if (f.suggested_fix) {
         lines.push(`- ${f.suggested_fix}`);
@@ -311,7 +311,7 @@ function handleReviewConfigAddRepo(args) {
 
   if (!repo) return JSON.stringify({ error: "'repo' is required (owner/repo format)." });
   if (!validateRepoFormat(repo)) {
-    return JSON.stringify({ error: `Invalid repo format: "${repo}". Must be owner/repo (e.g. {{GITHUB_USERNAME}}/my-repo).` });
+    return JSON.stringify({ error: `Invalid repo format: "${repo}". Must be owner/repo (e.g. htekdev/my-repo).` });
   }
   if (!required_reviewers || !Array.isArray(required_reviewers) || required_reviewers.length === 0) {
     return JSON.stringify({ error: "'required_reviewers' must be a non-empty array of { agent, role } objects." });
@@ -515,7 +515,7 @@ async function handleReviewPr(args) {
   // Get the PR head commit
   const ghToken = getGhToken();
   if (!ghToken) {
-    return JSON.stringify({ error: "No {{EMPLOYER_PARENT}} token found. Set GITHUB_TOKEN in .env." });
+    return JSON.stringify({ error: "No GitHub token found. Set GITHUB_TOKEN in .env." });
   }
 
   const headCommit = await getPrHead(repo, pr_number, ghToken);
@@ -542,6 +542,18 @@ async function handleReviewPr(args) {
   const entry = updateLedger(ledger, repo, pr_number, headCommit, agent_type, status, summary, findings);
   saveLedger(ledger);
 
+  // Auto-merge trigger: if all reviews pass and repo allows autonomous merge
+  let autoMergeTriggered = false;
+  let autoMergeInstruction = undefined;
+  if (entry.merge_allowed && repoConfig && !repoConfig.human_approval_required) {
+    autoMergeTriggered = true;
+    autoMergeInstruction =
+      `🟢 ALL REVIEWS PASSED — AUTO-MERGE READY. ` +
+      `This PR has been approved by all required reviewers for the current HEAD (${headCommit.slice(0, 7)}). ` +
+      `You MUST now call execute_approved_merge with repo="${repo}" and pr_number=${pr_number} to merge this PR. ` +
+      `If you cannot call execute_approved_merge, return this response so the orchestrator can trigger the merge.`;
+  }
+
   return JSON.stringify({
     status: "recorded",
     review_status: status,
@@ -553,6 +565,8 @@ async function handleReviewPr(args) {
     pending_reviewers: entry.pending_reviewers,
     blockers: entry.blockers,
     fix_cycle_count: entry.fix_cycle_count,
+    auto_merge_triggered: autoMergeTriggered || undefined,
+    _merge_instruction: autoMergeInstruction,
   });
 }
 
@@ -658,8 +672,8 @@ function checkReviewGate(repo, prNumber, currentHeadSha) {
   if (entry.fix_cycle_count >= maxCycles) {
     return {
       allowed: false,
-      reason: `Max fix cycles (${maxCycles}) reached. This PR requires manual review by {{PARENT_1}}.`,
-      guidance: "Escalate to {{PARENT_1}} for manual review. The fix loop has not converged.",
+      reason: `Max fix cycles (${maxCycles}) reached. This PR requires manual review by Hector.`,
+      guidance: "Escalate to Hector for manual review. The fix loop has not converged.",
       pending: [],
       denied: entry.blockers,
     };
@@ -693,7 +707,7 @@ function checkReviewGate(repo, prNumber, currentHeadSha) {
     } else if (denied.length > 0) {
       guidance = "Address the deny feedback (read findings via get_review_status), push fixes, then re-request review from denying agents.";
     } else {
-      guidance = "Wait for {{PARENT_1}} to manually review the flagged items.";
+      guidance = "Wait for Hector to manually review the flagged items.";
     }
 
     return {
@@ -728,7 +742,7 @@ try {
       name: "review_pr",
       description:
         "Submit a PR review as an authorized review agent. Posts a structured comment " +
-        "on the {{EMPLOYER_PARENT}} PR and updates the local review ledger. " +
+        "on the GitHub PR and updates the local review ledger. " +
         "The agent_type parameter is auto-injected by a hook — do NOT provide it manually. " +
         "DENY reviews MUST include findings with type 'fail' and a non-null suggested_fix " +
         "(prescriptive fixes only — if you can't prescribe a fix, use NEEDS_MANUAL_REVIEW). " +
@@ -739,7 +753,7 @@ try {
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format, e.g. '{{GITHUB_USERNAME}}/surgiquip'.",
+            description: "GitHub repo in owner/repo format, e.g. 'htekdev/surgiquip'.",
           },
           pr_number: {
             type: "number",
@@ -781,7 +795,7 @@ try {
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format, e.g. '{{GITHUB_USERNAME}}/surgiquip'.",
+            description: "GitHub repo in owner/repo format, e.g. 'htekdev/surgiquip'.",
           },
           pr_number: {
             type: "number",
@@ -804,7 +818,7 @@ try {
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format, e.g. '{{GITHUB_USERNAME}}/taller-mecanico'.",
+            description: "GitHub repo in owner/repo format, e.g. 'htekdev/taller-mecanico'.",
           },
           required_reviewers: {
             type: "array",
@@ -814,7 +828,7 @@ try {
           },
           human_approval_required: {
             type: "boolean",
-            description: "Whether {{PARENT_1}} must also approve before merge. Default: false.",
+            description: "Whether Hector must also approve before merge. Default: false.",
           },
           commit_invalidation: {
             type: "boolean",
@@ -835,7 +849,7 @@ try {
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format to remove.",
+            description: "GitHub repo in owner/repo format to remove.",
           },
         },
         required: ["repo"],
@@ -853,7 +867,7 @@ try {
         properties: {
           repo: {
             type: "string",
-            description: "{{EMPLOYER_PARENT}} repo in owner/repo format to update.",
+            description: "GitHub repo in owner/repo format to update.",
           },
           required_reviewers: {
             type: "array",
@@ -862,7 +876,7 @@ try {
           },
           human_approval_required: {
             type: "boolean",
-            description: "Whether {{PARENT_1}} must also approve before merge.",
+            description: "Whether Hector must also approve before merge.",
           },
           commit_invalidation: {
             type: "boolean",
@@ -898,7 +912,7 @@ try {
         properties: {
           repo: {
             type: "string",
-            description: "Full repo name (e.g., '{{GITHUB_USERNAME}}/taller-mecanico').",
+            description: "Full repo name (e.g., 'htekdev/taller-mecanico').",
           },
           pr_number: {
             type: "number",
@@ -1047,7 +1061,7 @@ try {
           action: {
             type: "string",
             description: "Admin action to perform.",
-            enum: ["pause", "resume", "cancel", "reprioritize", "set_type_limit", "set_config", "metrics", "flush_completed"],
+            enum: ["pause", "resume", "cancel", "reprioritize", "set_type_limit", "set_config", "metrics", "flush_completed", "reset_stale_dispatched", "force_delete"],
           },
           request_id: {
             type: "string",
@@ -1100,11 +1114,11 @@ try {
     onPreToolUse: async (input) => {
       // Hook 1: review_pr — stash agent identity + verify authorization
       if (input.toolName === "review_pr") {
-        // Read agent identity from runtime-provided fields
-        const agentName = input.agentType
-          || input.agentId
-          || input.toolArgs?.agent_type
-          || null;
+        // Read agent identity ONLY from runtime-injected fields (anti-spoofing).
+        // The runtime provides input.agentType for all task-launched agents.
+        // We fall back to input.agentId (also runtime-provided) but NEVER read
+        // from toolArgs — that would let agents self-declare identity.
+        const agentName = input.agentType || input.agentId || null;
 
         if (!agentName) {
           return {
@@ -1112,7 +1126,7 @@ try {
             permissionDecisionReason:
               "🚫 BLOCKED: Cannot identify calling agent. " +
               "The review_pr tool requires agent identity (provided by runtime via input.agentType). " +
-              "Ensure you are running as a named agent.",
+              "Ensure you are running as a named agent (launched via task tool with a specific agent_type).",
           };
         }
 
@@ -1294,7 +1308,7 @@ try {
         `3. The review agent MUST call set_review_state({ request_id: "${item.id}", state: "working" }) immediately on start.`,
         `4. After review completion, call set_review_state({ request_id: "${item.id}", state: "completed", result: "approve"|"deny"|"needs_manual_review", review_summary: "..." }).`,
         `5. On failure, call set_review_state({ request_id: "${item.id}", state: "failed", error: "..." }).`,
-        `6. Use the review_pr tool to submit findings to {{EMPLOYER_PARENT}}.`,
+        `6. Use the review_pr tool to submit findings to GitHub.`,
         ``,
         `IMPORTANT: Each dispatched review MUST get a fresh agent via \`task\` tool — ` +
         `do NOT review inline. This is a critical rule. Let the agent run autonomously.`,
@@ -1314,3 +1328,4 @@ try {
   console.error("[pr-review] Stack:", err?.stack || "no stack");
   process.exit(1);
 }
+
