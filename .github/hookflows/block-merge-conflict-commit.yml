@@ -1,0 +1,74 @@
+name: Block commits with merge conflict markers
+description: Blocks dev_commit when staged files contain unresolved merge conflict markers (<<<<<<<, =======, >>>>>>>). Prevents accidental commits of conflicted code.
+on:
+  hooks:
+    types: [preToolUse]
+    tools: [dev_commit]
+blocking: true
+steps:
+  - name: Check staged files for conflict markers
+    run: |
+      # Get staged diff content (read-only git command — allowed by governance)
+      $stagedDiff = & git diff --cached 2>&1
+      if ($LASTEXITCODE -ne 0) {
+        Write-Host 'No staged changes or git error; skipping conflict check.'
+        exit 0
+      }
+
+      if ([string]::IsNullOrWhiteSpace($stagedDiff)) {
+        Write-Host 'No staged content to check.'
+        exit 0
+      }
+
+      # Check for conflict markers in staged additions (lines starting with +)
+      # We only check added lines (starting with +) to avoid false positives from removed lines
+      $conflictPatterns = @(
+        '^\+<{7}\s',
+        '^\+={7}$',
+        '^\+>{7}\s'
+      )
+
+      $foundMarkers = @()
+      $currentFile = ''
+      $lines = $stagedDiff -split "`n"
+
+      foreach ($line in $lines) {
+        # Track current file
+        if ($line -match '^\+\+\+ b/(.+)$') {
+          $currentFile = $Matches[1]
+        }
+        # Check added lines for conflict markers
+        foreach ($pattern in $conflictPatterns) {
+          if ($line -match $pattern) {
+            $foundMarkers += "$currentFile`: $($line.Substring(1).Trim())"
+            break
+          }
+        }
+      }
+
+      if ($foundMarkers.Count -gt 0) {
+        $markerList = ($foundMarkers | Select-Object -First 10 | ForEach-Object { "  - $_" }) -join "`n"
+        $extra = ''
+        if ($foundMarkers.Count -gt 10) {
+          $extra = "`n  ... and $($foundMarkers.Count - 10) more"
+        }
+        $msg = @(
+          "🚫 BLOCKED: Staged files contain unresolved merge conflict markers.",
+          "",
+          "Found $($foundMarkers.Count) conflict marker(s):",
+          $markerList,
+          $extra,
+          "",
+          "Fix before committing:",
+          "1. Open the conflicted file(s) and resolve all <<<<<<<, =======, >>>>>>> sections",
+          "2. Re-stage the fixed file(s) with dev_add",
+          "3. Then retry dev_commit",
+          "",
+          "Governance: Never commit unresolved merge conflicts — they break code and create confusion."
+        )
+        Write-Error ($msg -join "`n")
+        exit 1
+      }
+
+      Write-Host "No conflict markers found in $($lines.Count) staged diff lines. Commit allowed."
+      exit 0

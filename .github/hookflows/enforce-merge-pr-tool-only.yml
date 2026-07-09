@@ -1,0 +1,135 @@
+name: Enforce merge_pr tool for all PR merges
+description: >
+  Blocks ALL alternative methods of merging a PR — gh pr merge, dev_merge_pr,
+  GitHub API merge endpoints in powershell, write_powershell merge inputs,
+  Invoke-RestMethod/WebRequest, curl, and any indirect merge path.
+  Two VALID merge paths exist:
+    PATH A — Human-approved (all repos):
+      1. merge_pr tool (telegram-bridge) → sends {{PARENT_1}} Approve/Deny buttons
+      2. {{PARENT_1}} clicks Approve → record written to data/merge-queue.json
+      3. merge-agent dispatched → calls execute_approved_merge (validates queue)
+    PATH B — Autonomous (human_approval_required: false in review-config.json):
+      1. All required review agents post APPROVE in review-ledger.json
+      2. Domain agent dispatches merge-agent with PRs array
+      3. merge-agent calls execute_approved_merge → validates review-ledger, writes
+         synthetic audit record to merge-queue.json, merges, notifies {{PARENT_1}}
+  Repos configured for autonomous merge (2026-07-01): taller-mecanico, servodetail, surgiquip.
+  All other repos (htek-dev-site, milkmama, etc.) still require {{PARENT_1}}'s Telegram approval.
+  Hardened after: ServoDetail unauthorized merge (2026-06-19),
+  Surgiquip #35/#25/#27 unauthorized merge (2026-06-28).
+  Updated: 2026-07-01 — {{PARENT_1}} directive for autonomous merge on configured repos.
+"on":
+  hooks:
+    types: [preToolUse]
+    tools: [powershell, dev_merge_pr, write_powershell]
+blocking: true
+env:
+  TOOL_NAME: ${{ event.tool.name }}
+  COMMAND_JSON: ${{ toJSON(event.tool.args.command) }}
+  INPUT_JSON: ${{ toJSON(event.tool.args.input) }}
+steps:
+  - name: Block all non-approved PR merge paths
+    run: |
+      $tool = $env:TOOL_NAME
+
+      # Hard block dev_merge_pr — no exceptions, ever
+      if ($tool -eq 'dev_merge_pr') {
+        $lines = @(
+          "BLOCKED: dev_merge_pr is PERMANENTLY DISABLED.",
+          "",
+          "ALL PR merges must go through the approval-gated flow:",
+          "  1. merge_pr(repo, pr_number) → sends {{PARENT_1}} Approve/Deny buttons",
+          "  2. {{PARENT_1}} clicks Approve → record written to merge-queue.json",
+          "  3. merge-agent auto-dispatched → calls execute_approved_merge",
+          "",
+          "Use: merge_pr(repo: 'owner/repo', pr_number: 123)",
+          "",
+          "No PR may be merged without explicit Telegram approval.",
+          "Hookflow: enforce-merge-pr-tool-only.yml (hardened 2026-06-28)"
+        )
+        Write-Error ($lines -join "`n")
+        exit 1
+      }
+
+      # For write_powershell — check if input contains merge commands
+      if ($tool -eq 'write_powershell') {
+        $input = ''
+        if (-not [string]::IsNullOrWhiteSpace($env:INPUT_JSON)) {
+          try { $input = $env:INPUT_JSON | ConvertFrom-Json } catch { $input = $env:INPUT_JSON }
+        }
+        if ([string]::IsNullOrWhiteSpace($input)) {
+          Write-Host 'No input; skipping.'
+          exit 0
+        }
+
+        # Block merge commands fed to interactive sessions
+        if ($input -imatch '\bgh\s+pr\s+merge\b') {
+          Write-Error "BLOCKED: Cannot feed 'gh pr merge' to an interactive session. Use merge_pr tool."
+          exit 1
+        }
+        if ($input -imatch 'pulls/\d+/merge') {
+          Write-Error "BLOCKED: Cannot feed GitHub API merge endpoint to an interactive session. Use merge_pr tool."
+          exit 1
+        }
+        if (($input -imatch '\bmerge\b') -and ($input -imatch '\bpulls?\b|\bpr\b')) {
+          Write-Error "BLOCKED: Detected merge+PR pattern in interactive input. Use merge_pr tool."
+          exit 1
+        }
+
+        Write-Host 'write_powershell input is not a merge command; allowed.'
+        exit 0
+      }
+
+      # For powershell — check if command is a merge attempt
+      if ($tool -eq 'powershell') {
+        $cmd = ''
+        if (-not [string]::IsNullOrWhiteSpace($env:COMMAND_JSON)) {
+          try { $cmd = $env:COMMAND_JSON | ConvertFrom-Json } catch { $cmd = $env:COMMAND_JSON }
+        }
+        if ([string]::IsNullOrWhiteSpace($cmd)) {
+          Write-Host 'No command; skipping.'
+          exit 0
+        }
+
+        # Block gh pr merge (any flag combination)
+        if ($cmd -imatch '\bgh\s+pr\s+merge\b') {
+          Write-Error "BLOCKED: gh pr merge is not allowed. Use merge_pr tool. (hookflow: enforce-merge-pr-tool-only.yml)"
+          exit 1
+        }
+
+        # Block direct GitHub API merge endpoint calls (pulls/N/merge)
+        if ($cmd -imatch 'pulls/\d+/merge') {
+          Write-Error "BLOCKED: Direct GitHub API merge calls are not allowed. Use merge_pr tool."
+          exit 1
+        }
+
+        # Block gh api with merge + pulls combo
+        if (($cmd -imatch '\bgh\s+api\b') -and ($cmd -imatch '\bmerge\b') -and ($cmd -imatch '\bpulls?\b')) {
+          Write-Error "BLOCKED: gh api merge calls are not allowed. Use merge_pr tool."
+          exit 1
+        }
+
+        # Block Invoke-RestMethod / Invoke-WebRequest to merge endpoints
+        if (($cmd -imatch '\b(Invoke-RestMethod|Invoke-WebRequest|irm|iwr)\b') -and ($cmd -imatch '\bmerge\b')) {
+          Write-Error "BLOCKED: REST calls to merge endpoints are not allowed. Use merge_pr tool."
+          exit 1
+        }
+
+        # Block curl/wget to merge endpoints
+        if (($cmd -imatch '\b(curl|wget)\b') -and ($cmd -imatch '\bmerge\b') -and ($cmd -imatch '\bpulls?\b|\brepos/\b')) {
+          Write-Error "BLOCKED: curl/wget to GitHub merge endpoints are not allowed. Use merge_pr tool."
+          exit 1
+        }
+
+        # Block node/python scripts that call GitHub merge API
+        if (($cmd -imatch '\b(node|python|python3)\b') -and ($cmd -imatch '\bmerge\b') -and ($cmd -imatch '\bpulls?\b|\bpr\b')) {
+          Write-Error "BLOCKED: Script-based merge attempts are not allowed. Use merge_pr tool."
+          exit 1
+        }
+
+        Write-Host 'Not a merge command; allowed.'
+        exit 0
+      }
+
+      Write-Host 'Unknown tool; allowing.'
+      exit 0

@@ -24,7 +24,7 @@ This contains the core principles, communication rules, and autonomy levels that
 **Save last:** Update `working.md` (queue state changes, API quirks, maintenance metrics, scheduling patterns), append `events.log`, promote to `long-term.md` only for validated patterns.
 ---
 
-## 🚨 Brand Protection — {{PRODUCT}} / {{EMPLOYER}} (CRITICAL)
+## 🚨 Brand Protection — GitHub Copilot / Microsoft (CRITICAL)
 
 Follow the `copilot-brand-safety` skill at `.github/skills/copilot-brand-safety/SKILL.md` for all brand protection rules. This overrides all scheduling optimization goals.
 
@@ -212,7 +212,7 @@ See `late-publishing` skill → "Known API Quirks & Workarounds" for the canonic
 - PowerShell — for time computation (mandatory)
 
 **Tools you do NOT use** (content-manager's domain):
-- {{EMPLOYER_PARENT}} issue tools — content-manager manages the pipeline
+- GitHub issue tools — content-manager manages the pipeline
 - Exa/Perplexity/web search — content-manager scans trends
 - vidpipe tools — content-manager handles production
 - `late_create_post` — content-manager publishes new posts

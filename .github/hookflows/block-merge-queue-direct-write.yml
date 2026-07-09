@@ -1,0 +1,129 @@
+name: Block direct writes to merge-queue.json
+description: >
+  Blocks any direct manipulation of data/merge-queue.json via edit, create, or
+  powershell (Set-Content, Out-File, ConvertTo-Json, echo/redirect, etc.).
+  The ONLY valid write path is the merge_pr tool (telegram-bridge), which sends
+  {{PARENT_1}} inline keyboard Approve/Deny buttons. Manually writing approval records
+  bypasses the entire approval gate and is a governance violation.
+  Learned: 2026-06-24, from {{PARENT_1}} — "Why did you let me merge without approval!!!"
+  Hardened: 2026-06-28, after Surgiquip unauthorized merge — closed node/python/script gaps.
+"on":
+  hooks:
+    types: [preToolUse]
+    tools: [edit, create, powershell, write_powershell]
+blocking: true
+env:
+  TOOL_NAME: ${{ event.tool.name }}
+  FILE_PATH_JSON: ${{ toJSON(event.tool.args.path) }}
+  COMMAND_JSON: ${{ toJSON(event.tool.args.command) }}
+  INPUT_JSON: ${{ toJSON(event.tool.args.input) }}
+steps:
+  - name: Block direct writes to merge-queue.json
+    run: |
+      $tool = $env:TOOL_NAME
+
+      # ── edit / create: check file path ──────────────────────────────────
+      if ($tool -eq 'edit' -or $tool -eq 'create') {
+        $filePath = ''
+        if (-not [string]::IsNullOrWhiteSpace($env:FILE_PATH_JSON)) {
+          try { $filePath = $env:FILE_PATH_JSON | ConvertFrom-Json } catch { $filePath = $env:FILE_PATH_JSON }
+        }
+
+        if ($filePath -imatch 'merge-queue\.json') {
+          $lines = @(
+            '🚫 BLOCKED: Direct writes to data/merge-queue.json are forbidden.',
+            '',
+            'merge-queue.json is the approval ledger. Manually writing records',
+            'bypasses the Telegram Approve/Deny button flow and is a governance violation.',
+            '',
+            'The ONLY valid path to add approval records:',
+            '  1. Call merge_pr(repo, pr_number) — sends {{PARENT_1}} inline keyboard buttons',
+            '  2. {{PARENT_1}} clicks Approve — record is auto-created in merge-queue.json',
+            '  3. merge-agent is auto-dispatched after approval',
+            '',
+            'No agent may write directly to this file. No exceptions.',
+            '',
+            'Hookflow: block-merge-queue-direct-write.yml (learned 2026-06-24)'
+          )
+          Write-Error ($lines -join "`n")
+          exit 1
+        }
+
+        Write-Host "File path does not match merge-queue.json; allowed."
+        exit 0
+      }
+
+      # ── write_powershell: check if input feeds merge-queue.json writes ──
+      if ($tool -eq 'write_powershell') {
+        $input = ''
+        if (-not [string]::IsNullOrWhiteSpace($env:INPUT_JSON)) {
+          try { $input = $env:INPUT_JSON | ConvertFrom-Json } catch { $input = $env:INPUT_JSON }
+        }
+        if ([string]::IsNullOrWhiteSpace($input)) {
+          Write-Host 'No input; skipping.'
+          exit 0
+        }
+
+        if ($input -imatch 'merge-queue\.json') {
+          Write-Error "🚫 BLOCKED: Cannot feed merge-queue.json references to interactive sessions. The approval ledger is read-only for agents."
+          exit 1
+        }
+
+        Write-Host 'write_powershell input does not reference merge-queue.json; allowed.'
+        exit 0
+      }
+
+      # ── powershell: check command for merge-queue.json writes ───────────
+      if ($tool -eq 'powershell') {
+        $cmd = ''
+        if (-not [string]::IsNullOrWhiteSpace($env:COMMAND_JSON)) {
+          try { $cmd = $env:COMMAND_JSON | ConvertFrom-Json } catch { $cmd = $env:COMMAND_JSON }
+        }
+        if ([string]::IsNullOrWhiteSpace($cmd)) {
+          Write-Host 'No command; skipping.'
+          exit 0
+        }
+
+        # Block any powershell command that references merge-queue.json with write intent
+        # Catches: PowerShell cmdlets, node fs, python open/write, curl PUT/POST, etc.
+        $hasMergeQueue = $cmd -imatch 'merge-queue\.json'
+        $hasWriteIntent = $cmd -imatch '(Set-Content|Out-File|Add-Content|>|>>|ConvertTo-Json|New-Item|Copy-Item|Move-Item|Write-Output.*\|.*merge|echo.*>|tee\b|\[IO\.File\]|writeFile|fs\.write|open\s*\(|\.write\s*\(|json\.dump|with\s+open|Invoke-RestMethod|Invoke-WebRequest|curl\b|wget\b|node\s+-e|python\s+-c|python3\s+-c)'
+
+        if ($hasMergeQueue -and $hasWriteIntent) {
+          $lines = @(
+            '🚫 BLOCKED: PowerShell write to data/merge-queue.json is forbidden.',
+            '',
+            'merge-queue.json is the approval ledger. Manually writing records',
+            'bypasses the Telegram Approve/Deny button flow and is a governance violation.',
+            '',
+            'The ONLY valid path: merge_pr tool → {{PARENT_1}} clicks Approve → auto-record.',
+            '',
+            'Hookflow: block-merge-queue-direct-write.yml (hardened 2026-06-28)'
+          )
+          Write-Error ($lines -join "`n")
+          exit 1
+        }
+
+        # CATCH-ALL: If command references merge-queue.json AND runs any scripting
+        # language, block it regardless of specific write pattern detection.
+        # Defense-in-depth against novel write methods we haven't anticipated.
+        $hasScriptingLang = $cmd -imatch '\b(node|python|python3|ruby|perl|php|pwsh|powershell)\b.*-[ec]\b|\b(node|python|python3|ruby|perl|php)\b.*merge-queue'
+        if ($hasMergeQueue -and $hasScriptingLang) {
+          $lines = @(
+            '🚫 BLOCKED: Script-based write to data/merge-queue.json is forbidden.',
+            '',
+            'No scripting language may modify the approval ledger.',
+            'The ONLY valid path: merge_pr tool → {{PARENT_1}} clicks Approve → auto-record.',
+            '',
+            'Hookflow: block-merge-queue-direct-write.yml (hardened 2026-06-28)'
+          )
+          Write-Error ($lines -join "`n")
+          exit 1
+        }
+
+        Write-Host 'Not a merge-queue.json write; allowed.'
+        exit 0
+      }
+
+      Write-Host 'Unknown tool; allowing.'
+      exit 0
